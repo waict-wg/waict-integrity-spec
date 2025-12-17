@@ -84,4 +84,4 @@ If more than one of the above points is true, then the strictest of the modes wi
 
 WAICT integrity does not prevent browsers from modifying pages to their liking. Copying from the SRI spec:
 
->User agents may allow users to modify the result of this algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
+> User agents may allow users to modify the result of this algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
