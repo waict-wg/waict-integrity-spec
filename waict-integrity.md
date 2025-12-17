@@ -25,7 +25,7 @@ The integrity manifest has the following structure:
   "resource_delimiter": "/* MY DELIM */"
 }
 ```
-Each nonempty key in `hashes` has a value that is either an SRI tag or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata. `resource_delimiter` is mandatory unless every key under `hashes` has a string value (i.e., no list values).
+Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata. `resource_delimiter` is mandatory unless every key under `hashes` has a string value (i.e., no list values).
 
 When a path has a single SRI tag as a value, the tag is computed in the same way that SRI tags are usually computed over a resource, i.e., as a plain hash over the unencoded data served from that path.
 
@@ -70,6 +70,8 @@ WAICT has three enforcement modes. In descending strictness, the modes are:
 * `normal`: The page will be loaded and notifications will be sent asynchronously to the user to inform about the status of the check
 * `report` : The page will be loaded and notifications will be only sent to developers, similar to `report-uri`
 
+ Requests (both as page subresources and initiated via Javascript) for paths that appear in the manifest are blocked/reported/informed about according to the [same rules as in SRI](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section).
+
 Enforcement modes on a server's response are dictated by the contents of the response's headers. The rules are as follows:
 
 * `strict` mode is enabled if `Integrity-Policy` has a nonempty `blocked-destinations`
@@ -77,3 +79,9 @@ Enforcement modes on a server's response are dictated by the contents of the res
 * `report` mode is enabled if `Integrity-Policy-Report-Only` has a nonempty `blocked-destinations`
 
 If more than one of the above points is true, then the strictest of the modes wins.
+
+# End user customization
+
+WAICT integrity does not prevent browsers from modifying pages to their liking. Copying from the SRI spec:
+
+>User agents may allow users to modify the result of this algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
