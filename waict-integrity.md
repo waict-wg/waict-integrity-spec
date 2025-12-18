@@ -8,19 +8,19 @@ The construction here should be modular enough that transparency can be built on
 
 # Integrity Manifest
 
-The integrity manifest has the following structure:
+The integrity manifest is a JSON object with the following structure:
 ```json
 {
+  "waict-integrity-version": "1",
   "hashes": {
     "/assets/x.html": "sha256-r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY="
-    "/assets/bundle.js": [
+    "/assets/css/main.css": "sha512-+ebNUN/EqhOvk46xbEOc1Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf3Sx9uFje/euj2opcww49mZJm/NA==",
+    "/favicon.ico": "sha256-zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=?content-type=image/png",
+    "": [
       "sha256-mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
       "sha384-H9OJUrESfT3SUlRpqAiDFEvqnnG2Sp9/eloyVMqxnnbmwzKjtESH2WdeSxwhZ184",
       "sha256-0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
     ],
-    "/assets/css/main.css": "sha512-  +ebNUN/EqhOvk46xbEOc1Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf3Sx9uFje/euj2opcww49mZJm/NA==",
-    "/assets/css/main.css": "sha512-  +ebNUN/EqhOvk46xbEOc1Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf3Sx9uFje/euj2opcww49mZJm/NA==",
-    "/favicon.ico": "sha256-zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=?content-type=image/png",
   },
   "resource_delimiter": "/* MY DELIM */"
 }
@@ -54,13 +54,13 @@ where `destination` is defined as in the [`fetch`](https://fetch.spec.whatwg.org
 
 We make two additions to these types:
 1. We add an optional field `checked-destinations: [destination]` to `Integrity-Policy`
-1. We extend the the source string type in both `Integrity-Policy` and `Integirty-Policy-Report-Only` to permit more values than just `"inline"`. Sources may now be values of the form `"waict-manifest-v1-<X>"` where `<X>` is any nonempty sequence of characters in `[a-zA-Z0-9_~\.\-]` (i.e., [URL-unreserved](https://www.rfc-editor.org/rfc/rfc3986.html#section-2.3) characters).
+1. We extend the the source string type in both `Integrity-Policy` and `Integirty-Policy-Report-Only` to permit more values than just `"inline"`. Sources may now be URLs. These will be expected to point to an integrity manifest.
 
-In order for the client to tell when a manifest was added/removed, the value of `X` MUST be unique to the manifest. It SHOULD be the base64url-encoded SHA256 hash of the unencoded manifest. Clients MUST ignore a source with illegal characters in the string.
+In order for the client to tell when a manifest was added/removed, any URL that appears in a `sources` field MUST be unique to the manifest it points to. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid URL.
 
-# Fetching the manifest
+# Serving the manifest
 
-Once a client has received an `Integrity-Policy` or `Integrity-Policy-Report-Only` header with a `waict-manifest-v1-<X>` source, it fetches the source by doing an HTTP `GET` on the endpoint `/.well-known/waict/v1/manifest/<X>`.
+A URL referenced in the `sources` field in the above headers MUST serve a manifest with content type `application/waict-integrity-manifest` (TODO: version this? or is the versioning in the manifest format enough?).
 
 # Enforcement modes
 
@@ -84,4 +84,4 @@ If more than one of the above points is true, then the strictest of the modes wi
 
 WAICT integrity does not prevent browsers from modifying pages to their liking. Copying from the SRI spec:
 
-> User agents may allow users to modify the result of this algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
+> User agents may allow users to modify the result of [the hash comparison] algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
