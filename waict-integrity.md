@@ -43,24 +43,92 @@ If a resource is fetched and its path does not appear in the manifest, no integr
 
 # Headers
 
-The server indicates its integrity policy via response header (we do not support inline signalling yet). We build on the existing [specification](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section) for `Integrity-Policy` and `Integrity-Policy-Report-Only`. Recall these are both structs of the form:
+The server indicates its integrity policy via response header (we do not support inline signalling yet). We build on the existing [specification](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section) for `Integrity-Policy`. Recall this struct is of the form:
 ```
-Integrity-Policy/Integrity-Policy-Report-Only:
+Integrity-Policy:
   sources: [string]
   blocked-destinations: [destination]
   endpoints: [string]
 ```
 where `destination` is defined as in the [`fetch`](https://fetch.spec.whatwg.org/#destination-type) spec.
 
-We make two additions to these types:
+We make two additions:
 1. We add an optional field `checked-destinations: [destination]` to `Integrity-Policy`
-1. We extend the the source string type in both `Integrity-Policy` and `Integirty-Policy-Report-Only` to permit more values than just `"inline"`. Sources may now be URLs. These will be expected to point to an integrity manifest.
+1. We extend the the source string type to permit more values than just `"inline"`. Sources may now be URLs. These will be expected to point to an integrity manifest.
 
-In order for the client to tell when a manifest was added/removed, any URL that appears in a `sources` field MUST be unique to the manifest it points to. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid URL.
+Any URL that appears in a `sources` field MUST be unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid URL.
+
+# Enforcement Algorithms
+
+Recall there are two verification steps for any subresource to successfully load. It must 1), be [allowed](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section) (i.e., not blocked) by the integrity policy, and 2) have content that [satisfies](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) the expected hash, as [parsed](https://www.w3.org/TR/sri-2/#parse-metadata-section) from the integrity metadata.
+
+To handle manifests, we must modify both parts of this algorithm. First, we define the parsing algorithm for manifests.
+
+## Parse Manifest Metadata
+
+Given a URL path `p` and an integrity manifest `m`, we define the algorithm to parse the manifest to return a set of hashes that may plausibly pertain to the subresource at the given URL.
+
+1. Let `r` be the empty dictionary
+1. Let `pathTag = m["hashes"][p]`
+1. Let `anywhereTags = m["hashes"][""]`
+1. Let `r.pathTag = parse(pathTag)`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm
+1. Let `r.anywhereTags = {parse(x) for x in anywhereTags}`
+1. Return `r`
+
+## Do bytes match parsed manifest metadata?
+
+Given a `r` resulting from manifest parsing above, a bytestring `b`, and a delimiter `d`, we define the algorithm to determine whether `b` matches `r`.
+
+1. Run the spec's [existing](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) bytes matching algorithm on `b` and `r.pathTag`. On success, return true.
+1. Let `bb` be the list of components of `b`, after splitting on `d`. If `d` does not appear, `bb` is a singleton.
+1. For each component `bi` of `bb`, run the spec's existing bytes matching algorithm on `bi` and `r.anywhereTags`. If all succeed, return true.
+1. Return false.
+
+## Should request be blocked by Integrity Policy?
+
+We modify the [blocking algorithm](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section) to handle the new `sources` element type.
+
+We remove step 2:
+
+> Let `parsedMetadata` be the result of calling parse metadata with request’s integrity metadata.
+
+To replace it, we insert two steps after step 5:
+
+> a) Let `parsedInlineMetadata` be the result of calling parse metadata with request's inline integrity metadata.
+>
+> b) Let `parsedManifestMetadata` be the result of calling parse metadata with the current path and the request's integrity metadata from all the manifests referenced in `policy`, returning an error if any manifest fetch fails.
+
+We remove step 3:
+
+> If `parsedMetadata` is not the empty set and request’s mode is either "cors" or "same-origin", return "Allowed".
+
+To replace it, we insert two steps after step 5:
+
+> a) If `policy`'s sources contains "inline", `parsedInlineMetadata` is not the empty set, and request’s mode is either "cors" or "same-origin", return "Allowed".
+>
+> b) If `parsedManifestMetadata` is not the empty set, and request’s mode is either "cors" or "same-origin", return "Allowed".
+
+Finally we remove the struck text and add the bolded text in steps 12 and 13:
+
+> If `policy`'s `sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
+>
+> If `reportPolicy`'s `sources` ~contains `"inline"`~ **is nonempty** and `reportPolicy`'s blocked destinations contains request's destination, set reportBlock to true.
+
+Note: We do not have to change how `reportPolicy` handles its reporting. The only reportable event is a subresource that is missing an inline integrity tag.
+
+Note: The above algorithm doesn't check if a subresource's path appears in the manifest. One could reasonably say that if there is no delimiter, and no anywhere-hashes, then the absence of the path in the `hashes` dict should be a reportable error. Currently it is not. In order to make it a reportable error, this algorithm would have to first parse the contents of the manifest. That'd be odd, and also add complexity, so it's not in here.
+
+## What metadata to compare to bytes?
+
+Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use:
+
+1. Let `policy` be the current integrity policy
+1. If `policy`'s sources contain `"inline"` and `parsedInlineMetadata` is nonempty, return the [byte matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
+1. Otherwise, return the bytes matching algorithm above for `parsedManifestMetadata`.
 
 # Serving the manifest
 
-A URL referenced in the `sources` field in the above headers MUST serve a manifest with content type `application/waict-integrity-manifest` (TODO: version this? or is the versioning in the manifest format enough?).
+GETting a URL referenced in the `sources` field in `Integrity-Policy` MUST result in a response of content type `application/waict-integrity-manifest` containing a manifest (TODO: version this? or is the versioning in the manifest format enough?).
 
 # Enforcement modes
 
