@@ -1,4 +1,4 @@
-# WAICT integrity version 0.1-pre.rwc
+# WAICT integrity version 0.1
 
 This document specifies a minimum viable Web Application Integrity, Consistency, and Transparency (WAICT) integrity specification for the purposes of deploying something before Real World Crypto 2025.
 
@@ -31,7 +31,7 @@ When a path has a single SRI tag as a value, the tag is computed in the same way
 
 When a path has a list of SRI tags as a value, this denotes that the response at that endpoint contains a _bundled_ resource, i.e., a response with multiple embedded resources, separated by `resource_delimiter`. Specifically, the unencoded response, interpreted as a bytestring, is of the form `<r1><resource_delimiter><r2><resource_delimiter><r3><resource_delimiter>...<rn>`, where `<ri>` denotes the i-th resource, and `<resource_delimiter>` denotes the UTF-8 encoding of the `resource_delimiter` field in the manifest. A trailing resource delimiter results in `<rn>` being the empty bytestring.
 
-(TODO Question: how important is it that `resource_delimiter` is supported in v0.1-pre.rwc? Would it be okay to just use to the bundle hash? This merits a conversation)
+(TODO Question: how important is it that `resource_delimiter` is supported in v0.1? Would it be okay to just use to the bundle hash? This merits a conversation)
 
 The manifest's nonempty keys are URL paths. To check if a resource at that path passes integrity, the browser:
 1. Computes the SRI tag of the fetched resource
@@ -110,9 +110,9 @@ To replace it, we insert two steps after step 5:
 
 Finally we remove the struck text and add the bolded text in steps 12 and 13:
 
-> If `policy`'s `sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
+> 12. If `policy`'s `sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
 >
-> If `reportPolicy`'s `sources` ~contains `"inline"`~ **is nonempty** and `reportPolicy`'s blocked destinations contains request's destination, set reportBlock to true.
+> 13. If `reportPolicy`'s `sources` ~contains `"inline"`~ **is nonempty** and `reportPolicy`'s blocked destinations contains request's destination, set reportBlock to true.
 
 Note: We do not have to change how `reportPolicy` handles its reporting. The only reportable event is a subresource that is missing an inline integrity tag.
 
