@@ -18,14 +18,14 @@ The integrity manifest is a JSON object with the following structure:
     "/favicon.ico": "sha256-zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=?content-type=image/png",
     "": [
       "sha256-mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
-      "sha384-H9OJUrESfT3SUlRpqAiDFEvqnnG2Sp9/eloyVMqxnnbmwzKjtESH2WdeSxwhZ184",
+      "sha256-/0VoaGkrvY8OPyppsAPm1Ikl1OGrHMyc5NUD8Sc9ThY=",
       "sha256-0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
     ],
   },
   "resource_delimiter": "/* MY DELIM */"
 }
 ```
-Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata. `resource_delimiter` is mandatory unless every key under `hashes` has a string value (i.e., no list values).
+Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata. `resource_delimiter` is mandatory unless every key under `hashes` has a string value (i.e., no list values). Any tag under the `""` key MUST have the SHA-256 hash algorithm. This is to ensure a resource does not need to be hashed multiple times.
 
 When a path has a single SRI tag as a value, the tag is computed in the same way that SRI tags are usually computed over a resource, i.e., as a plain hash over the unencoded data served from that path.
 
