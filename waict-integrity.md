@@ -69,18 +69,20 @@ To handle manifests, we must modify both parts of this algorithm. First, we defi
 Given a URL path `p` and an integrity manifest `m`, we define the algorithm to parse the manifest to return a set of hashes that may plausibly pertain to the subresource at the given URL.
 
 1. Let `r` be the empty dictionary
-1. Let `pathTag = m["hashes"][p]`
-1. Let `anywhereTags = m["hashes"][""]`
-1. Let `r.pathTag = parse(pathTag)`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm
-1. Let `r.anywhereTags = {parse(x) for x in anywhereTags}`
+1. Let `pathTag = m["hashes"][p]`, or `undefined` if not defined
+1. Let `anywhereTags = m["hashes"][""]`, or `undefined` if not defined
+1. If `pathTag` is defined, set `r.pathTag = parse(pathTag)`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm
+1. If `anywhereTags` is defined, set `r.anywhereTags = {parse(x) for x in anywhereTags}`
 1. Return `r`
+
+Note that `r` is the empty dictionary if a URL path does not appear in the manifest and there are no allowed-anywhere tags.
 
 ## Do bytes match parsed manifest metadata?
 
 Given a `r` resulting from manifest parsing above, a bytestring `b`, and a delimiter `d`, we define the algorithm to determine whether `b` matches `r`.
 
-1. Run the spec's [existing](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) bytes matching algorithm on `b` and `r.pathTag`. On success, return true.
-1. Let `bb` be the list of components of `b`, after splitting on `d`. If `d` does not appear, `bb` is a singleton.
+1. If `r.pathTag` is defined, run the spec's [existing](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) bytes matching algorithm on `b` and `r.pathTag`, and return the result.
+1. Otherwise, we will compare against the anywhere tags. Let `bb` be the list of components of `b` after splitting on `d`. If `d` does not appear, `bb` is a singleton.
 1. For each component `bi` of `bb`, run the spec's existing bytes matching algorithm on `bi` and `r.anywhereTags`. If all succeed, return true.
 1. Return false.
 
@@ -120,11 +122,12 @@ Note: The above algorithm doesn't check if a subresource's path appears in the m
 
 ## What metadata to compare to bytes?
 
-Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use:
+Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use for a subresource whose request has been allowed:
 
 1. Let `policy` be the current integrity policy
-1. If `policy`'s sources contain `"inline"` and `parsedInlineMetadata` is nonempty, return the [byte matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
-1. Otherwise, return the bytes matching algorithm above for `parsedManifestMetadata`.
+1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` is nonempty, return the [byte matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
+1. Otherwise, if `policy.sources` is nonempty, return the result of the bytes matching algorithm above for `parsedManifestMetadata`.
+1. Return true
 
 # Serving the manifest
 
