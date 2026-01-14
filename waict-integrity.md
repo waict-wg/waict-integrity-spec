@@ -20,12 +20,14 @@ The integrity manifest is a JSON object with the following structure:
       "sha256-mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
       "sha256-/0VoaGkrvY8OPyppsAPm1Ikl1OGrHMyc5NUD8Sc9ThY=",
       "sha256-0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
-    ],
+    ]
   },
   "resource_delimiter": "/* MY DELIM */"
 }
 ```
-Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata. `resource_delimiter` is mandatory unless every key under `hashes` has a string value (i.e., no list values). Any tag under the `""` key MUST have the SHA-256 hash algorithm. This is to ensure a resource does not need to be hashed multiple times.
+Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata.
+
+If `""` is a key in `hashes` (aka the _allowed anywhere_ hashes are present), then `resource_delimiter` MUST be defined, and vice-versa. Further, the value of `resource_delimiter`, if defined, MUST be nonempty. Finally, any tag under the `""` key MUST have the SHA-256 hash algorithm. This is to ensure a resource does not need to be hashed multiple times.
 
 When a path has a single SRI tag as a value, the tag is computed in the same way that SRI tags are usually computed over a resource, i.e., as a plain hash over the unencoded data served from that path.
 
@@ -68,23 +70,14 @@ To handle manifests, we must modify both parts of this algorithm. First, we defi
 
 Given a URL path `p` and an integrity manifest `m`, we define the algorithm to parse the manifest to return a set of hashes that may plausibly pertain to the subresource at the given URL.
 
-1. Let `r` be the empty dictionary
-1. Let `pathTag = m["hashes"][p]`, or `undefined` if not defined
-1. Let `anywhereTags = m["hashes"][""]`, or `undefined` if not defined
-1. If `pathTag` is defined, set `r.pathTag = parse(pathTag)`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm
-1. If `anywhereTags` is defined, set `r.anywhereTags = {parse(x) for x in anywhereTags}`
-1. Return `r`
+1. Let `r` be the empty dictionary.
+1. Let `pathTag = m["hashes"][p]`, or `undefined` if not defined.
+1. Let `anywhereTags = m["hashes"][""]`, or `undefined` if not defined.
+1. If `pathTag` is defined, set `r.pathTag = {parse(pathTag)}`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm.
+1. Set `r.anywhereTags = {parse(x) for x in anywhereTags}`, setting it to the empty set if `anywhereTags` is undefined.
+1. Return `r`.
 
 Note that `r` is the empty dictionary if a URL path does not appear in the manifest and there are no allowed-anywhere tags.
-
-## Do bytes match parsed manifest metadata?
-
-Given a `r` resulting from manifest parsing above, a bytestring `b`, and a delimiter `d`, we define the algorithm to determine whether `b` matches `r`.
-
-1. If `r.pathTag` is defined, run the spec's [existing](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) bytes matching algorithm on `b` and `r.pathTag`, and return the result.
-1. Otherwise, we will compare against the anywhere tags. Let `bb` be the list of components of `b` after splitting on `d`. If `d` does not appear, `bb` is a singleton.
-1. For each component `bi` of `bb`, run the spec's existing bytes matching algorithm on `bi` and `r.anywhereTags`. If all succeed, return true.
-1. Return false.
 
 ## Should request be blocked by Integrity Policy?
 
@@ -120,14 +113,37 @@ Note: We do not have to change how `reportPolicy` handles its reporting. The onl
 
 Note: The above algorithm doesn't check if a subresource's path appears in the manifest. One could reasonably say that if there is no delimiter, and no anywhere-hashes, then the absence of the path in the `hashes` dict should be a reportable error. Currently it is not. In order to make it a reportable error, this algorithm would have to first parse the contents of the manifest. That'd be odd, and also add complexity, so it's not in here.
 
+## Enforcement on Hashes
+
+Once a request has been allowed and the subresource is fetched, there are three algorithms that determine how the client performs integrity checking. These algorithms answer the following questions:
+
+1. Which hash metadata will be compared to the computed hash of the subresource?
+1. Does that metadata match the computed hash of the subresource?
+1. What happens on error?
+
 ## What metadata to compare to bytes?
 
 Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use for a subresource whose request has been allowed:
 
 1. Let `policy` be the current integrity policy
-1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` is nonempty, return the [bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
-1. Otherwise, if `policy.sources` is nonempty, return the result of the bytes matching algorithm above for `parsedManifestMetadata`.
-1. Return true
+1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` (defined in the request blocking algorithm) is nonempty, return `parsedInlineMetadata`.
+1. Otherwise, if `policy.sources` is nonempty, return `parsedManifestMetadata`.
+1. Return `null`
+
+## Does the metadata match the computed hash of the subresource?
+
+Given the result of the algorithm above, we compare to the subresource bytes as follows. A return value of `true` indicates that the integrity check succeeded.
+
+1. If the result of the above was `null`, return `true`.
+1. If the result of the above is a `parsedInlineMetadata`, then [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) defined in the spec, and give it `parsedInlineMetadata` and the subresource's bytes as input.
+1. If the result of the above is a `parsedManifestMetadata`, do the following.
+    1. Let `b` be the bytes of the subresource
+    1. Let `d` be `policy.resource_delimiter`, or `null` if not defined in the policy.
+    1. If `parsedManifestMetadata.pathTag` is defined, run the spec's [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) on `b` and `parsedManifestMetadata.pathTag`, and return the result.
+    1. If `parsedManifestMetadata.anywhereTags` is the empty set, return `false`.
+    1. Let `bb` be the list of components of `b` after splitting on `d` (note, per the manifest format, `d` is not `null` because `anywhereTags` is nonempty). If `d` does not appear in `b`, then `bb` is a singleton.
+    1. For each component `b_i` of `bb`, run the [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) algorithm on `b_i` and `parsedManifestMetadata.anywhereTags`. If all succeed, return true.
+    1. Return false.
 
 # Request Headers
 
