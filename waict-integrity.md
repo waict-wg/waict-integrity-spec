@@ -71,7 +71,7 @@ Integrity-Policy-Report-Only:
   endpoints: [string]
 ```
 
-We add one field, `hash-endpoints`, to this structure, with the default value of an empty list. In the header, the presentation format of this field is an inner list, similar to the other fields. This endpoint is where hash matching errors are sent. The endpoints are defined in the `Reporting-Endpoints` header in the same response.
+We add one boolean field, `hash-report-mode-enabled`, to this structure, with the default value of false. This flag is necessary to enable `hash-report` mode, described below.
 
 # Enforcement Algorithms
 
@@ -167,7 +167,7 @@ WAICT has two hash matching enforcement modes:
 * `hash-strict` : A subresource whose hash did not match the expected one will not be loaded/unlocked into the page
 * `hash-report` : A subresource whose hash did not match the expected one will loaded and notifications will be only sent to developers, similar to `report-uri`
 
-Enforcement modes on a server's response are dictated by the contents of the response's headers. Specifically, `hash-report` mode is enabled if `Integrity-Policy` has empty `blocked-destinations`, and `Integrity-Policy-Report-Only` has a nonempty `hash-endpoints`. Otherwise, `hash-strict` mode is enabled.
+Enforcement modes on a server's response are dictated by the contents of the response's headers. Specifically, `hash-report` mode is enabled if `Integrity-Policy` has empty `blocked-destinations`, and `Integrity-Policy-Report-Only` has `hash-report-mode-enabled` set to true. Otherwise, `hash-strict` mode is enabled.
 
 (TODO: Describe the structure of the hash match failure reports)
 
