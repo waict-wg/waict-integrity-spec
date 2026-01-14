@@ -90,7 +90,7 @@ Given a URL path `p` and an integrity manifest `m`, we define the algorithm to p
 1. Set `r.anywhereTags = {parse(x) for x in anywhereTags}`, setting it to the empty set if `anywhereTags` is undefined.
 1. Return `r`.
 
-Note that `r` is the empty dictionary if a URL path does not appear in the manifest and there are no allowed-anywhere tags.
+Note that `r = {pathTag: {}, anywhereTags: {}}` if a URL path does not appear in the manifest and there are no allowed-anywhere tags. We call this the _empty manifest metadata_.
 
 ## Should request be blocked by Integrity Policy?
 
@@ -104,7 +104,9 @@ To replace it, we insert two steps after step 5:
 
 > a) Let `parsedInlineMetadata` be the result of calling parse metadata with request's inline integrity metadata.
 >
-> b) Let `parsedManifestMetadata` be the result of calling parse metadata with the current path and the request's integrity metadata from all the manifests referenced in `policy`, returning an error if any manifest fetch fails.
+> b) Let `parsedManifestMetadata` be the result of calling parse metadata with the request URL and the manifest manifest referenced in `policy`, returning an error if any manifest fetch fails.
+
+(TODO: normalize relative URLs to be schemeless, and normalize external URLs to be full URLs)
 
 We remove step 3:
 
@@ -112,15 +114,13 @@ We remove step 3:
 
 To replace it, we insert two steps after step 5:
 
-> a) If `policy`'s sources contains "inline", `parsedInlineMetadata` is not the empty set, and request’s mode is either "cors" or "same-origin", return "Allowed".
+> a) If `policy.sources` contains `"inline"`, `parsedInlineMetadata` is not the empty manifest metadata, and request's mode is either "cors" or "same-origin", return "Allowed".
 >
-> b) If `parsedManifestMetadata` is not the empty set, and request’s mode is either "cors" or "same-origin", return "Allowed".
+> b) If `parsedManifestMetadata` is not the empty manifest metadata, and request’s mode is either "cors" or "same-origin", return "Allowed".
 
-Finally we remove the struck text and add the bolded text in steps 12 and 13:
+Finally, we remove the struck text and add the bolded text in step 12:
 
-> 12. If `policy`'s `sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
->
-> 13. If `reportPolicy`'s `sources` ~contains `"inline"`~ **is nonempty** and `reportPolicy`'s blocked destinations contains request's destination, set reportBlock to true.
+> 12. If `policy.sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
 
 Note: We do not have to change how `reportPolicy` handles its reporting. The only reportable event is a subresource that is missing an inline integrity tag.
 
@@ -152,8 +152,8 @@ Given the result of the algorithm above, we compare to the subresource bytes as 
 1. If the result of the above is a `parsedManifestMetadata`, do the following.
     1. Let `b` be the bytes of the subresource
     1. Let `d` be `policy.resource_delimiter`, or `null` if not defined in the policy.
-    1. If `parsedManifestMetadata.pathTag` is defined, run the spec's [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) on `b` and `parsedManifestMetadata.pathTag`, and return the result.
-    1. If `parsedManifestMetadata.anywhereTags` is the empty set, return `false`.
+    1. If `parsedManifestMetadata.pathTag` is not the empty set, run the spec's [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) on `b` and `parsedManifestMetadata.pathTag`, and return the result.
+    1. If `parsedManifestMetadata.anywhereTags` is the empty set, return `true` (reasoning: this case implies `parsedManifestMetadata` is empty, meaning this request was allowed because it's not a blocked destination; therefore integrity checking doesn't matter here)
     1. Let `bb` be the list of components of `b` after splitting on `d` (note, per the manifest format, `d` is not `null` because `anywhereTags` is nonempty). If `d` does not appear in `b`, then `bb` is a singleton.
     1. For each component `b_i` of `bb`, run the [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) algorithm on `b_i` and `parsedManifestMetadata.anywhereTags`. If all succeed, return true.
     1. Return false.
