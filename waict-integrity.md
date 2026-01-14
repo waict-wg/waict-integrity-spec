@@ -41,7 +41,7 @@ For paths with bundled resources, i.e., with lists as values, the bundle is spli
 
 If a resource is fetched and its path does not appear in the manifest, no integrity check is done.
 
-# Headers
+# Response Headers
 
 The server indicates its integrity policy via response header (we do not support inline signalling yet). We build on the existing [specification](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section) for `Integrity-Policy`. Recall this struct is of the form:
 ```
@@ -54,9 +54,9 @@ where `destination` is defined as in the [`fetch`](https://fetch.spec.whatwg.org
 
 We make two additions:
 1. We add an optional field `checked-destinations: [destination]` to `Integrity-Policy`
-1. We extend the the source string type to permit more values than just `"inline"`. Sources may now be URLs. These will be expected to point to an integrity manifest.
-
-Any URL that appears in a `sources` field MUST be unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid URL.
+1. We extend the the source string type to permit more values than just `"inline"`. Sources may now be strings of the form `waict-manifest-v1-X`, where `X` is a URL (TODO: strictly define URL). These will be expected to point to an integrity manifest. This comes with two constraints:
+    1. There MUST NOT be more than manifest source in `sources`. That is, only one manifest may govern a page at a time.
+    1. Any manifest source that appears in the `sources` field MUST have a URL unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid manifest source.
 
 # Enforcement Algorithms
 
@@ -125,9 +125,15 @@ Note: The above algorithm doesn't check if a subresource's path appears in the m
 Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use for a subresource whose request has been allowed:
 
 1. Let `policy` be the current integrity policy
-1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` is nonempty, return the [byte matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
+1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` is nonempty, return the [bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) for inline tags defined in the spec.
 1. Otherwise, if `policy.sources` is nonempty, return the result of the bytes matching algorithm above for `parsedManifestMetadata`.
 1. Return true
+
+# Request Headers
+
+When a website gets reloaded, any subset of the subresources on the page may get re-fetched. In order for the web application to remain coherent, we must ensure that the refreshed subresources match the manifest specified by the main page. Unfortunately, the URLs in most web applications are not stable. As upgrades occur, the subresources served at some URLs will change. Thus, a client from three versions ago has no clear way to tell the server that they want the three-version-old copy of a particular subresource. The server is forced to make a best-effort response to the client's ambiguous request.
+
+To disambiguate subresource requests, clients MAY include a header `Expected-Hash` on their subresource requests, containing the SRI tag of the subresource they expect to load. To avoid an integrity error, the client SHOULD use the SRI tag that the above algorithm would choose to pass into the byte matching algorithm. For example, if the policy contains `"inline"`, the cilent SHOULD set `Expected-Hash` to the strongest inline SRI tag.
 
 # Serving the manifest
 
