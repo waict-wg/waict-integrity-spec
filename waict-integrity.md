@@ -45,6 +45,8 @@ If a resource is fetched and its path does not appear in the manifest, no integr
 
 # Response Headers
 
+## Integrity Policy
+
 The server indicates its integrity policy via response header (we do not support inline signalling yet). We build on the existing [specification](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section) for `Integrity-Policy`. Recall this struct is of the form:
 ```
 Integrity-Policy:
@@ -54,11 +56,22 @@ Integrity-Policy:
 ```
 where `destination` is defined as in the [`fetch`](https://fetch.spec.whatwg.org/#destination-type) spec.
 
-We make two additions:
-1. We add an optional field `checked-destinations: [destination]` to `Integrity-Policy`
-1. We extend the the source string type to permit more values than just `"inline"`. Sources may now be strings of the form `waict-manifest-v1-X`, where `X` is a URL (TODO: strictly define URL). These will be expected to point to an integrity manifest. This comes with two constraints:
-    1. There MUST NOT be more than manifest source in `sources`. That is, only one manifest may govern a page at a time.
-    1. Any manifest source that appears in the `sources` field MUST have a URL unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid manifest source.
+We extend the the source string type to permit more values than just `"inline"`. Sources may now be strings of the form `waict-manifest-v1-X`, where `X` is a URL (TODO: strictly define URL). These will be expected to point to an integrity manifest. This comes with two constraints:
+
+1. There MUST NOT be more than manifest source in `sources`. That is, only one manifest may govern a page at a time.
+1. Any manifest source that appears in the `sources` field MUST have a URL unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid manifest source.
+
+## Report-Only Integrity Policy
+
+Recall the report-only integrity policy has the same structure as the integrity policy:
+```
+Integrity-Policy-Report-Only:
+  sources: [string]
+  blocked-destinations: [destination]
+  endpoints: [string]
+```
+
+We add one field, `hash-endpoints`, to this structure, with the default value of an empty list. In the header, the presentation format of this field is an inner list, similar to the other fields. This endpoint is where hash matching errors are sent. The endpoints are defined in the `Reporting-Endpoints` header in the same response.
 
 # Enforcement Algorithms
 
@@ -119,7 +132,7 @@ Once a request has been allowed and the subresource is fetched, there are three 
 
 1. Which hash metadata will be compared to the computed hash of the subresource?
 1. Does that metadata match the computed hash of the subresource?
-1. What happens on error?
+1. What happens on hash matching error?
 
 ## What metadata to compare to bytes?
 
@@ -145,33 +158,29 @@ Given the result of the algorithm above, we compare to the subresource bytes as 
     1. For each component `b_i` of `bb`, run the [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) algorithm on `b_i` and `parsedManifestMetadata.anywhereTags`. If all succeed, return true.
     1. Return false.
 
+### What Happens on Hash Matching Error
+
+(NOTE: this section describes behavior NOT compatible with the current SRI spec. Currently, if a hash does not match, the resource is not loaded, period.)
+
+WAICT has two hash matching enforcement modes:
+
+* `hash-strict` : A subresource whose hash did not match the expected one will not be loaded/unlocked into the page
+* `hash-report` : A subresource whose hash did not match the expected one will loaded and notifications will be only sent to developers, similar to `report-uri`
+
+Enforcement modes on a server's response are dictated by the contents of the response's headers. Specifically, `hash-report` mode is enabled if `Integrity-Policy` has empty `blocked-destinations`, and `Integrity-Policy-Report-Only` has a nonempty `hash-endpoints`. Otherwise, `hash-strict` mode is enabled.
+
+
 # Request Headers
 
 When a website gets reloaded, any subset of the subresources on the page may get re-fetched. In order for the web application to remain coherent, we must ensure that the refreshed subresources match the manifest specified by the main page. Unfortunately, the URLs in most web applications are not stable. As upgrades occur, the subresources served at some URLs will change. Thus, a client from three versions ago has no clear way to tell the server that they want the three-version-old copy of a particular subresource. The server is forced to make a best-effort response to the client's ambiguous request.
 
 To disambiguate subresource requests, clients MAY include a header `Expected-Hash` on their subresource requests, containing the SRI tag of the subresource they expect to load. To avoid an integrity error, the client SHOULD use the SRI tag that the above algorithm would choose to pass into the byte matching algorithm. For example, if the policy contains `"inline"`, the cilent SHOULD set `Expected-Hash` to the strongest inline SRI tag.
 
+If `Expected-Hash` is omitted, the server SHOULD assume the client is requesting the latest version of the subresource.
+
 # Serving the manifest
 
 GETting a URL referenced in the `sources` field in `Integrity-Policy` MUST result in a response of content type `application/waict-integrity-manifest` containing a manifest (TODO: version this? or is the versioning in the manifest format enough?).
-
-# Enforcement modes
-
-WAICT has three enforcement modes. In descending strictness, the modes are:
-
-* `strict` : The resources will not be loaded/unlocked into the page if synchronous integrity check has not passed
-* `normal`: The page will be loaded and notifications will be sent asynchronously to the user to inform about the status of the check
-* `report` : The page will be loaded and notifications will be only sent to developers, similar to `report-uri`
-
- Requests (both as page subresources and initiated via Javascript) for paths that appear in the manifest are blocked/reported/informed about according to the [same rules as in SRI](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section).
-
-Enforcement modes on a server's response are dictated by the contents of the response's headers. The rules are as follows:
-
-* `strict` mode is enabled if `Integrity-Policy` has a nonempty `blocked-destinations`
-* `normal` mode is enabled if `Integrity-Policy` has a nonempty `checked-destinations`
-* `report` mode is enabled if `Integrity-Policy-Report-Only` has a nonempty `blocked-destinations`
-
-If more than one of the above points is true, then the strictest of the modes wins.
 
 # End user customization
 
