@@ -169,6 +169,8 @@ WAICT has two hash matching enforcement modes:
 
 Enforcement modes on a server's response are dictated by the contents of the response's headers. Specifically, `hash-report` mode is enabled if `Integrity-Policy` has empty `blocked-destinations`, and `Integrity-Policy-Report-Only` has a nonempty `hash-endpoints`. Otherwise, `hash-strict` mode is enabled.
 
+(TODO: Describe the structure of the hash match failure reports)
+
 
 # Request Headers
 
