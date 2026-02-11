@@ -1,191 +1,300 @@
-# WAICT integrity version 0.1
+# WAICT - Signalling and Integrity v0.3
 
-This document specifies a minimum viable Web Application Integrity, Consistency, and Transparency (WAICT) integrity specification for the purposes of deploying something before Real World Crypto 2025.
+Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged in a transparency service. This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
 
-The goal of this document is to be simple, easy to execute on, and, most importantly, commonly agreed upon.
+WAICT's integrity model builds upon [Subresource Integrity (SRI)](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Subresource_Integrity) and the [Integrity-Policy header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Integrity-Policy). This document describes how WAICT is signalled by user-agents and websites and how the integrity of web applications is assured. The transparency of web applications is described in a separate specification.
 
-The construction here should be modular enough that transparency can be built on top without much difficulty and without compromises on efficiency.
+WAICT provides a stronger security property for user-agents, not servers, by making additional security checks on content fetched from the network. It does not constrain how user-agents locally modify pages, for example through user-agent preferences, extensions or other third-party additions.
 
-# Integrity Manifest
+# Conventions
+
+This document uses Structured Field Values for HTTP ([RFC 9651](https://www.rfc-editor.org/rfc/rfc9651)) such as `sf-list`, `sf-integer`, `sf-boolean`, and `sf-token`.
+
+In this document, `origin` refers to the tuple (scheme, host, port) as defined in [RFC 6454](https://www.rfc-editor.org/rfc/rfc6454).
+
+> [!NOTE]
+> Editorial comments are indicated by the use of notes like these. These will be removed in the future.
+
+# Negotiating WAICT Support
+
+User-agents SHOULD signal that they support WAICT to the server through the use of user-agent client hints. Doing so will allow the server to avoid sending unnecessary information to user-agents which don't support WAICT.
+
+To signal WAICT support, the [user agent client hint](https://wicg.github.io/ua-client-hints/) `Sec-CH-WAICT` is used whose value is a `sf-list` of `sf-integers`. Each integer represents a supported version of WAICT. This specification defines version `1`. If user-agents include a `Sec-CH-WAICT` header in their requests, the included version numbers MUST be supported by the user-agent.
+
+Servers supporting WAICT SHOULD actively solicit client hints for WAICT by including `Sec-CH-WAICT` in their `Accept-CH` response header (See [Section 3.1 of RFC 8942](https://www.rfc-editor.org/rfc/rfc8942#section-3.1)). Servers MUST tolerate unknown integers in the `Sec-CH-WAICT` request header.
+
+For example, a user-agent that supports versions 1 and 2 of WAICT might send:
+
+`Sec-CH-WAICT: 1, 2`
+
+# Signalling Use of WAICT
+
+## Response Header
+
+Websites signal that they want user-agents to enforce WAICT through the use of the HTTP response header: `Integrity-Policy-WAICT-v1`.
+
+The header is a structured response header (Dictionary type per [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651)). The following key-value pairs MUST be present:
+
+* `max-age` - An `sf-integer` that MUST be `>= 0`. How long (in seconds) user-agents MUST enforce WAICT after seeing this header (downgrade protection).
+* `mode` - An `sf-token` containing either `enforce` or `report`. In `enforce` mode, subresources that fail integrity checks are blocked from loading. In `report` mode, failures are reported but resources are still loaded.
+* `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin.
+* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored.
+
+If one or more of the mandatory keys is missing or invalid, the entire header MUST be ignored.
+The following key-value pairs are optional:
+
+* `preload` - An `sf-boolean`. Indicates the site wants to enforce WAICT indefinitely via a preload list. This field is not used directly by user-agents. `?0` (false) by default.
+* `reporting-endpoints` - Indicates endpoint(s) for submitting violations following [Integrity Policy Reporting](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). Empty by default.
+
+Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
+
+An example header is given below:
+
+```
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, reporting-endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+```
+
+Websites using WAICT SHOULD set this response header on all of their same-origin responses.
+
+## User-Agent Processing of Response Header
+
+### Scope
+
+WAICT state is scoped to the top-level origin and applies to requests made within the context of that origin. It does not extend to requests made by other top-level origins and so is compatible with the partitioning of state by top-level origin.
+When an origin is using WAICT, all requests made with a matching [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin) will be impacted by the WAICT security policy.
+
+When processing a response to a same-origin request (that is, the request's origin matches its top-level navigation initiator origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and SHOULD store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
+
+However, WAICT does not impact requests made to a WAICT-enforcing domain in other top-level contexts if those top-level contexts do not advertise WAICT themselves. User-agents MUST ignore `Integrity-Policy-WAICT-v1` headers set on responses whose origin does not match their current top-level navigation initiator origin. An example:
+
+* `foo.com` and `bar.com` both embed resources located on each other's domains
+* `foo.com` uses WAICT and sets an enforcement header. `bar.com` does not use WAICT.
+* User-agents which navigate to pages on `foo.com` will enforce WAICT on sub-resource requests, including those for `bar.com`.
+* User-agents which navigate to `bar.com` will not enforce WAICT, even when loading sub-resources from `foo.com`.
+
+### Storage
+
+User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store:
+
+* The list of reporting endpoints
+* The manifest url
+* For each supported entry in `blocked-destinations`:
+  * The mode (`enforce` or `report`)
+  * The effective expiry time (`max-age` seconds from when the header was last seen)
+
+The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the WAICT enforcement mode. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
+
+TODO: WIP.
+
+### Upgrades and Downgrades
+
+Origins may change their WAICT header over time. For example, an origin may evaluate WAICT in report mode and later switch to enforce mode. Alternatively, a site may be enforcing WAICT and wish to change the scope of covered resources, or even disable WAICT entirely. However, user-agents MUST enforce certain rules to prevent downgrade attacks - where a site alters its WAICT signalling in order to enable attacks.
+
+User-agents MUST follow this algorithm when updating their WAICT state:
+
+1. Overwrite the list of reporting endpoints with the latest contents of `reporting-endpoints`.
+2. Overwrite the manifest url with the latest `manifest` entry.
+3. For each supported entry in `blocked-destinations`, compare the existing and new record:
+   1. If the new record is `enforce` and the previous record was `report`, update the entry, or
+   2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the entry.
+   3. Otherwise, ignore the new record.
+
+Any record which has reached its effective expiry time MUST be removed.
+
+This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
+
+> [!NOTE]
+> These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement.
+
+### Preloading
+
+Websites can signal their desire for user-agent vendors to preload WAICT status onto their user-agents. As a general rule, websites SHOULD NOT preload WAICT status. Preloading WAICT may lead to irrecoverable errors for user-agents.
+
+The details of how user-agent vendors are alerted to this are vendor-specific, but websites wishing user-agent vendors to preload MUST use an `Integrity-Policy-WAICT-v1` header with:
+
+* `mode` set to `enforce`.
+* `preload` set to `?1`.
+* `max-age` set to a value greater than or equal to 1 year (`31536000` seconds).
+
+User-agent vendors may configure user-agents with preload information via their vendor-specific out-of-band channels. Such user-agents SHOULD enforce WAICT as long as their vendor-supplied preload list is up to date.
+
+Vendors may choose different cutoffs for when they consider a preload list to be stale, but are RECOMMENDED to use a value of 30 days. That is, if a user-agent goes 30 days without receiving an updated preload list, it SHOULD stop enforcing entries on the preload list.
+
+# WAICT Manifests
+
+WAICT manifests provide a public commitment to the web application(s) being served by the origin. The manifest describes both the individual resources used to provide the application and a proof that it has been logged publicly.
+
+## Fetching Manifests
+
+When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete until a manifest is available. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
+
+The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
+
+GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest` as described in the next section.
+
+## Manifest Structure
 
 The integrity manifest is a JSON object with the following structure:
+
+* The `hashes` field is a dictionary mapping URL paths to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique. This field MUST be present.
+* The `wildcard_hashes` field is an optional sorted list of unique SHA-256 hashes (base64-encoded).
+* The `resource_delimiter` field is an optional string.
+* The `transparency_proof` field contains base64-encoded data. This field MUST be present.
+
+An example is given below:
+
 ```json
 {
-  "waict-integrity-version": "1",
   "hashes": {
-    "/assets/x.html": "sha256-r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY="
-    "/assets/css/main.css": "sha512-+ebNUN/EqhOvk46xbEOc1Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf3Sx9uFje/euj2opcww49mZJm/NA==",
-    "/favicon.ico": "sha256-zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=?content-type=image/png",
-    "": [
-      "sha256-mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
-      "sha256-/0VoaGkrvY8OPyppsAPm1Ikl1OGrHMyc5NUD8Sc9ThY=",
-      "sha256-0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
-    ]
+    "/assets/x.html": "r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY=",
+    "/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
+    "/favicon.ico": "zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0="
   },
-  "resource_delimiter": "/* MY DELIM */"
+  "wildcard_hashes": [
+    "mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
+    "H9OJUrESfT3SUlRpqAiDFEvqnnG2Sp9/eloyVMqxnnb=",
+    "0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
+  ],
+  "resource_delimiter": "/* MY DELIM */",
+  "transparency_proof": "Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf..."
 }
 ```
-Each nonempty key in `hashes` has a value that is either an SRI tag (more precisely, a [`hash-with-options`](https://www.w3.org/TR/sri-2/#grammardef-hash-with-options)) or a list of SRI tags. Recall SRI tags can have a `?` character followed by optional metadata.
 
-If `""` is a key in `hashes` (aka the _allowed anywhere_ hashes are present), then `resource_delimiter` MUST be defined, and vice-versa. Further, the value of `resource_delimiter`, if defined, MUST be nonempty. Finally, any tag under the `""` key MUST have the SHA-256 hash algorithm. This is to ensure a resource does not need to be hashed multiple times.
+The meaning and use of these fields is described in the next section.
 
-When a path has a single SRI tag as a value, the tag is computed in the same way that SRI tags are usually computed over a resource, i.e., as a plain hash over the unencoded data served from that path.
+> [!NOTE]
+> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
-When a path has a list of SRI tags as a value, this denotes that the response at that endpoint contains a _bundled_ resource, i.e., a response with multiple embedded resources, separated by `resource_delimiter`. Specifically, the unencoded response, interpreted as a bytestring, is of the form `<r1><resource_delimiter><r2><resource_delimiter><r3><resource_delimiter>...<rn>`, where `<ri>` denotes the i-th resource, and `<resource_delimiter>` denotes the UTF-8 encoding of the `resource_delimiter` field in the manifest. A trailing resource delimiter results in `<rn>` being the empty bytestring.
+## Validating Manifests
 
-(TODO Question: how important is it that `resource_delimiter` is supported in v0.1? Would it be okay to just use to the bundle hash? This merits a conversation)
+The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
 
-The manifest's nonempty keys are URL paths. To check if a resource at that path passes integrity, the browser:
-1. Computes the SRI tag of the fetched resource
-1. Compares the computed SRI tag with the one at that path in the manifest, producing an integrity error on failure
+# Changes to Network Fetches
 
-For paths with bundled resources, i.e., with lists as values, the bundle is split by resource delimiter and the above check is performed for each component. If the number of components does not match the length of the list, the browser raises an integrity error.
+This section describes how WAICT modifies the lifecycle of network fetches for covered resources. Each subsection corresponds to a phase of the fetch lifecycle.
 
-If a resource is fetched and its path does not appear in the manifest, no integrity check is done.
+WAICT integrity checks apply to the final response bytes delivered to the document, after any processing by [Service Workers](https://www.w3.org/TR/service-workers/). This is consistent with the behavior of [SRI](https://www.w3.org/TR/sri-2/).
 
-# Response Headers
+## Determine Coverage
 
-## Integrity Policy
+Before a fetch begins, the user-agent determines whether it is covered by the WAICT policy by checking the request's [destination](https://fetch.spec.whatwg.org/#concept-request-destination) against the stored `blocked-destinations` list. This information is conveyed in the response header and is always available to the user-agent, even if the manifest has not yet been loaded.
 
-The server indicates its integrity policy via response header (we do not support inline signalling yet). We build on the existing [specification](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section) for `Integrity-Policy`. Recall this struct is of the form:
+If the destination does not appear in the `blocked-destinations` list, the fetch proceeds without WAICT processing. Otherwise, the fetch is subject to the integrity checks described below.
+
+## Request Start
+
+For a fetch covered by WAICT, the user-agent performs two steps before sending the request.
+
+First, the user-agent SHOULD set the request header `Integrity-Policy-WAICT-v1-Req` to the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
+
 ```
-Integrity-Policy:
-  sources: [string]
-  blocked-destinations: [destination]
-  endpoints: [string]
-```
-where `destination` is defined as in the [`fetch`](https://fetch.spec.whatwg.org/#destination-type) spec.
-
-We extend the the source string type to permit more values than just `"inline"`. Sources may now be strings of the form `waict-manifest-v1-X`, where `X` is a URL (TODO: strictly define URL). These will be expected to point to an integrity manifest. This comes with two constraints:
-
-1. There MUST NOT be more than manifest source in `sources`. That is, only one manifest may govern a page at a time.
-1. Any manifest source that appears in the `sources` field MUST have a URL unique to the manifest it points to. This is so the client can tell when a manifest was added/removed. To ensure uniqueness, the URL SHOULD contain in it a hash of the manifest. Clients MUST ignore a source that is neither `"inline"` nor a valid manifest source.
-
-## Report-Only Integrity Policy
-
-Recall the report-only integrity policy has the same structure as the integrity policy:
-```
-Integrity-Policy-Report-Only:
-  sources: [string]
-  blocked-destinations: [destination]
-  endpoints: [string]
+Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
 ```
 
-We add one boolean field, `hash-report-mode-enabled`, to this structure, with the default value of false. This flag is necessary to enable `hash-report` mode, described below.
+Second, the user-agent determines the source of integrity metadata for this request. Inline [SRI](https://www.w3.org/TR/sri-2/) tags take precedence over manifest hashes:
 
-# Enforcement Algorithms
+1. If the request has inline integrity metadata (i.e., an `integrity` attribute on the requesting element) and the parsed metadata is nonempty, the inline metadata will be used for integrity checking.
+2. Otherwise, the manifest will be consulted at request finish.
 
-Recall there are two verification steps for any subresource to successfully load. It must 1), be [allowed](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section) (i.e., not blocked) by the integrity policy, and 2) have content that [satisfies](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) the expected hash, as [parsed](https://www.w3.org/TR/sri-2/#parse-metadata-section) from the integrity metadata.
+> [!NOTE]
+> Consider dropping the SRI aspect?
 
-To handle manifests, we must modify both parts of this algorithm. First, we define the parsing algorithm for manifests.
+## Response Streaming
 
-## Parse Manifest Metadata
+As response data arrives, the user-agent SHOULD begin computing a SHA-256 hash of the response body, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
 
-Given a URL path `p` and an integrity manifest `m`, we define the algorithm to parse the manifest to return a set of hashes that may plausibly pertain to the subresource at the given URL.
+Some user agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. If the WAICT policy is `enforce`, the user-agent's processing of incomplete responses MUST NOT be observable from within the document's context.
 
-1. Let `r` be the empty dictionary.
-1. Let `pathTag = m["hashes"][p]`, or `undefined` if not defined.
-1. Let `anywhereTags = m["hashes"][""]`, or `undefined` if not defined.
-1. If `pathTag` is defined, set `r.pathTag = {parse(pathTag)}`, where `parse` refers to the spec's [existing](https://www.w3.org/TR/sri-2/#parse-metadata-section) tag parsing algorithm.
-1. Set `r.anywhereTags = {parse(x) for x in anywhereTags}`, setting it to the empty set if `anywhereTags` is undefined.
-1. Return `r`.
+> [!NOTE]
+> This is intended to enable user-agents to engage in unobservable actions like speculatively fetching subresources from unverified responses which are critical for performance, provided those actions can't be used to bypass integrity checks.
 
-Note that `r = {pathTag: {}, anywhereTags: {}}` if a URL path does not appear in the manifest and there are no allowed-anywhere tags. We call this the _empty manifest metadata_.
+## Request Finish
 
-## Should request be blocked by Integrity Policy?
+Once the response body is complete and the SHA-256 hash has been computed, the user-agent performs the integrity check.
 
-We modify the [blocking algorithm](https://www.w3.org/TR/sri-2/#should-request-be-blocked-by-integrity-policy-section) to handle the new `sources` element type.
+### Inline SRI Path
 
-We remove step 2:
+If inline integrity metadata was selected at request start, the user-agent runs the existing [SRI bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) with the inline metadata and the response bytes, and returns its result. The remainder of this section does not apply.
 
-> Let `parsedMetadata` be the result of calling parse metadata with request’s integrity metadata.
+### Manifest Path
 
-To replace it, we insert two steps after step 5:
+If the manifest is the source of integrity metadata, the user-agent proceeds as follows:
 
-> a) Let `parsedInlineMetadata` be the result of calling parse metadata with request's inline integrity metadata.
->
-> b) Let `parsedManifestMetadata` be the result of calling parse metadata with the request URL and the manifest manifest referenced in `policy`, returning an error if any manifest fetch fails.
+1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
+2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
+3. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
+4. Let `pathHash = manifest["hashes"][requestPath]`, or `undefined` if the path is not present.
+5. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
+6. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose path appears in `hashes` MUST match via its path hash; the wildcard check is never used as a fallback.
+7. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
+    1. Let `d` be `resource_delimiter`.
+    2. Split `b` on `d` to obtain components `bb`. If `d` does not appear in `b`, then `bb` is a singleton containing `b`. If the number of components exceeds an implementation-defined limit, fail with reason `no_manifest_match`.
+    3. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result appears in `wildcardHashes` using binary search. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
+8. Fail with reason `missing_from_manifest`.
 
-(TODO: normalize relative URLs to be schemeless, and normalize external URLs to be full URLs)
+## Handling Failures
 
-We remove step 3:
+When an integrity check fails, the user-agent MUST take the following actions.
 
-> If `parsedMetadata` is not the empty set and request’s mode is either "cors" or "same-origin", return "Allowed".
+### Reporting
 
-To replace it, we insert two steps after step 5:
+In both `report` and `enforce` modes, the user-agent MUST:
 
-> a) If `policy.sources` contains `"inline"`, `parsedInlineMetadata` is not the empty manifest metadata, and request's mode is either "cors" or "same-origin", return "Allowed".
->
-> b) If `parsedManifestMetadata` is not the empty manifest metadata, and request’s mode is either "cors" or "same-origin", return "Allowed".
+* Log the failure to the browser console and developer tools.
+* If the server has indicated support for the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API), report the error as a `waict-violation` to the endpoints specified in the `reporting-endpoints` field of the `Integrity-Policy-WAICT-v1` header.
 
-Finally, we remove the struck text and add the bolded text in step 12:
+The `waict-violation` report `body` includes the keys and values from [IntegrityViolationReportBody](https://developer.mozilla.org/en-US/docs/Web/API/IntegrityViolationReportBody), enriched with an entry `reason` indicating the cause of the failure:
 
-> 12. If `policy.sources` ~contains `"inline"`~ **is nonempty** and `policy`'s blocked destinations contains request's destination, set block to true.
+* `manifest_unavailable` - The manifest for the origin could not be loaded.
+* `invalid_manifest` - The manifest was loaded, but was malformed, had unexpected types, or was missing required fields (including `transparency_proof`).
+* `invalid_transparency_proof` - A manifest and transparency proof were provided, but the proof could not be parsed.
+* `untrusted_transparency_proof` - A manifest and transparency proof were provided, but the proof could not be authenticated.
+* `missing_from_manifest` - A valid manifest was available, but this resource was not covered.
+* `no_manifest_match` - A valid manifest was available and described this resource, but the resource did not match the manifest entry.
 
-Note: We do not have to change how `reportPolicy` handles its reporting. The only reportable event is a subresource that is missing an inline integrity tag.
+### Report Mode
 
-Note: The above algorithm doesn't check if a subresource's path appears in the manifest. One could reasonably say that if there is no delimiter, and no anywhere-hashes, then the absence of the path in the `hashes` dict should be a reportable error. Currently it is not. In order to make it a reportable error, this algorithm would have to first parse the contents of the manifest. That'd be odd, and also add complexity, so it's not in here.
+In `report` mode, the user-agent MUST still load the resource. Report mode is intended for web developers to validate their deployment; it does not provide security for user-agents.
 
-## Enforcement on Hashes
+Compliant user-agents MUST NOT display error messages to end-users who have not indicated they wish to see additional technical information.
 
-Once a request has been allowed and the subresource is fetched, there are three algorithms that determine how the client performs integrity checking. These algorithms answer the following questions:
+### Enforce Mode
 
-1. Which hash metadata will be compared to the computed hash of the subresource?
-1. Does that metadata match the computed hash of the subresource?
-1. What happens on hash matching error?
+In `enforce` mode, the behavior depends on whether the error is localized to a subresource:
 
-## What metadata to compare to bytes?
+* If the error is localized to a subresource (e.g. the main page loaded successfully and the manifest is available), the user-agent MUST NOT make the resource available to the page.
+* If the error affects the page as a whole (e.g. the manifest could not be loaded), the user-agent MUST display a warning page indicating a WAICT error. The user-agent SHOULD NOT allow the user to bypass the warning.
 
-Inline integrity tags take precedence over tags from manifests. More precisely, the following algorithm determines which byte matching algorithm to use for a subresource whose request has been allowed:
+# Non-Normative Appendices
 
-1. Let `policy` be the current integrity policy
-1. If `policy.sources` sources contains `"inline"` and `parsedInlineMetadata` (defined in the request blocking algorithm) is nonempty, return `parsedInlineMetadata`.
-1. Otherwise, if `policy.sources` is nonempty, return `parsedManifestMetadata`.
-1. Return `null`
+## Server Operator Advice
 
-## Does the metadata match the computed hash of the subresource?
+Server operators should be cautious when deploying WAICT enforcement. In general, there is no recourse for a faulty deployment in `enforce` mode, other than waiting out the `max-age` period. In the event of a faulty deployment and the use of `preload`, the waiting-out period is potentially unbounded.
 
-Given the result of the algorithm above, we compare to the subresource bytes as follows. A return value of `true` indicates that the integrity check succeeded.
+Server operators are recommended to deploy WAICT in `report` mode initially and gain confidence in their deployment gradually. Server operators should treat reported errors seriously. Every reported error will result in a broken user-agent if `enforce` is enabled.
 
-1. If the result of the above was `null`, return `true`.
-1. If the result of the above is a `parsedInlineMetadata`, then [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) defined in the spec, and give it `parsedInlineMetadata` and the subresource's bytes as input.
-1. If the result of the above is a `parsedManifestMetadata`, do the following.
-    1. Let `b` be the bytes of the subresource
-    1. Let `d` be `policy.resource_delimiter`, or `null` if not defined in the policy.
-    1. If `parsedManifestMetadata.pathTag` is not the empty set, run the spec's [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) on `b` and `parsedManifestMetadata.pathTag`, and return the result.
-    1. If `parsedManifestMetadata.anywhereTags` is the empty set, return `true` (reasoning: this case implies `parsedManifestMetadata` is empty, meaning this request was allowed because it's not a blocked destination; therefore integrity checking doesn't matter here)
-    1. Let `bb` be the list of components of `b` after splitting on `d` (note, per the manifest format, `d` is not `null` because `anywhereTags` is nonempty). If `d` does not appear in `b`, then `bb` is a singleton.
-    1. For each component `b_i` of `bb`, run the [inline tag bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) algorithm on `b_i` and `parsedManifestMetadata.anywhereTags`. If all succeed, return true.
-    1. Return false.
+Once a server operator has become confident in their use of `report` mode, they should consider switching to `enforce` mode with a low `max-age`, e.g. on the order of minutes. As time passes, server operators should consider raising the `max-age`.
 
-### What Happens on Hash Matching Error
+The exact age that server operators settle on is a tradeoff between the maximum recovery time for their site and how often users are expected to visit their site and still need a security benefit.
 
-(NOTE: this section describes behavior NOT compatible with the current SRI spec. Currently, if a hash does not match, the resource is not loaded, period.)
+The use of preload is a specialist feature which is unlikely to be suitable for the majority of sites using WAICT. Sites should only enable preload if they are committed to making their site unavailable when WAICT is unavailable.
 
-WAICT has two hash matching enforcement modes:
+Sites wishing to stop using WAICT should stop serving the enforcement header and wait out their previously set `max-age`. Sites may be able to unenroll through the use of the opt-out signal described in the [proofs specification](waict-proofs.md).
 
-* `hash-strict` : A subresource whose hash did not match the expected one will not be loaded/unlocked into the page
-* `hash-report` : A subresource whose hash did not match the expected one will loaded and notifications will be only sent to developers, similar to `report-uri`
+## Security Considerations
 
-Enforcement modes on a server's response are dictated by the contents of the response's headers. Specifically, `hash-report` mode is enabled if `Integrity-Policy` has empty `blocked-destinations`, and `Integrity-Policy-Report-Only` has `hash-report-mode-enabled` set to true. Otherwise, `hash-strict` mode is enabled.
+This design emulates that of RFC 6797 (HSTS).
 
-(TODO: Describe the structure of the hash match failure reports)
+A key constraint is that user-agent vendors typically cannot ensure that their user-agents have consistent or non-stale configurations. Further, connection failures to valid websites for stale user-agents are intolerable to website operators.
 
+As a consequence, this design ensures that websites continue to maintain availability if a user-agent has stale data (enforced via the `max-age` signals on headers and preload lists). This also means that security is only available for non-stale user-agents.
 
-# Request Headers
+The use of the `Integrity-Policy-WAICT-v1` header is essential for the overall security of WAICT. User-agents must be aware of the need to enforce WAICT in order to gain security benefits from it.
 
-When a website gets reloaded, any subset of the subresources on the page may get re-fetched. In order for the web application to remain coherent, we must ensure that the refreshed subresources match the manifest specified by the main page. Unfortunately, the URLs in most web applications are not stable. As upgrades occur, the subresources served at some URLs will change. Thus, a client from three versions ago has no clear way to tell the server that they want the three-version-old copy of a particular subresource. The server is forced to make a best-effort response to the client's ambiguous request.
+User-agents only gain a security benefit from the use of `enforce` mode. User-agents do not gain a security benefit from the use of `report` mode.
 
-To disambiguate subresource requests, clients MAY include a header `Expected-Hash` on their subresource requests, containing the SRI tag of the subresource they expect to load. To avoid an integrity error, the client SHOULD use the SRI tag that the above algorithm would choose to pass into the byte matching algorithm. For example, if the policy contains `"inline"`, the cilent SHOULD set `Expected-Hash` to the strongest inline SRI tag.
+When used without `preload`, user-agents only get a security benefit once they have visited the website and seen the enforcement header. This security benefit is only retained if their next visit to the website falls within the `max-age` window.
 
-If `Expected-Hash` is omitted, the server SHOULD assume the client is requesting the latest version of the subresource.
+Using the `preload` functionality allows user-agents to benefit from the security of WAICT from their first visit and for as long as either the website is serving the WAICT header or the user-agent is receiving updates to its preload list.
 
-# Serving the manifest
-
-GETting a URL referenced in the `sources` field in `Integrity-Policy` MUST result in a response of content type `application/waict-integrity-manifest` containing a manifest (TODO: version this? or is the versioning in the manifest format enough?).
-
-# End user customization
-
-WAICT integrity does not prevent browsers from modifying pages to their liking. Copying from the SRI spec:
-
-> User agents may allow users to modify the result of [the hash comparison] algorithm via user preferences, bookmarklets, third-party additions to the user agent, and other such mechanisms.
+WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin fetching resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
