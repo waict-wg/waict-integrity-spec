@@ -167,7 +167,16 @@ The meaning and use of these fields is described in the next section.
 
 ## Validating Manifests
 
+Manifests must be parsed and validated subject to the following rules:
+
+* The mandatory keys `hashes` and `transparency_proof` MUST be present.
+* Unrecognized top level keys MUST be ignored.
+* Items with hash values must be valid base64 and 32 bytes in length (after decoding)
+* The keys of `hashes` must be valid URLs parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) with base equal to the document's URL.
+
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
+
+Manifests which do not follow these rules are invalid and MUST not be used.
 
 # Changes to Network Fetches
 
