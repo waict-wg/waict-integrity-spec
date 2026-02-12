@@ -170,8 +170,8 @@ Manifests must be parsed and validated subject to the following rules:
 
 * The mandatory keys `hashes` and `transparency_proof` MUST be present.
 * Unrecognized top level keys MUST be ignored.
-* Items with hash values must be valid base64 and 32 bytes in length (after decoding)
-* The keys of `hashes` must be valid URLs parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) with base equal to the document's URL.
+* Hash values in `hashes` and `wildcard_hashes` must be valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Each key of `hashes` must be parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL. If parsing fails, the manifest is invalid. The parsed URL MUST NOT have a non-empty [fragment](https://url.spec.whatwg.org/#concept-url-fragment); if it does, the manifest is invalid. After parsing, the key's canonical form is the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of the parsed URL with the *exclude fragment* flag set. If two keys produce the same canonical form, the manifest is invalid.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
 
@@ -225,11 +225,11 @@ If the manifest is the source of integrity metadata, the response body is [fully
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
-3. Let `reqPath` be the [initial URL](https://fetch.spec.whatwg.org/#concept-request) associated with the request.
+3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
-5. Let `pathHash` be the result of checking for a match between the url `reqPath` and the parsed urls in `manifest["hashes"]`, or `undefined` if the path is not present.
+5. Let `pathHash` be the hash value from `manifest["hashes"]` whose canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
 6. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
-7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose path appears in `hashes` MUST match via its path hash; the wildcard check is never used as a fallback.
+7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
     2. Split `b` on `d` to obtain components `bb`. If `d` does not appear in `b`, then `bb` is a singleton containing `b`. If the number of components exceeds an implementation-defined limit, fail with reason `no_manifest_match`.
