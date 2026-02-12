@@ -180,21 +180,21 @@ Manifests which do not follow these rules are invalid and MUST not be used.
 
 # Changes to Network Fetches
 
-This section describes how WAICT modifies the lifecycle of network fetches for covered resources. Each subsection corresponds to a phase of the fetch lifecycle.
+This section describes how WAICT modifies the lifecycle of network fetches for covered resources. The modifications are described in terms of the [Fetch Standard](https://fetch.spec.whatwg.org/) algorithms: [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) (the entry point), [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) (security checks, response handling, and integrity verification), and [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) (delivery of the response to the caller). See also the Fetch Standard's guidance on [invoking fetch and processing responses](https://fetch.spec.whatwg.org/#fetch-elsewhere-fetch).
 
 WAICT integrity checks apply to the final response bytes delivered to the document, after any processing by [Service Workers](https://www.w3.org/TR/service-workers/). This is consistent with the behavior of [SRI](https://www.w3.org/TR/sri-2/).
 
 ## Determine Coverage
 
-Before a fetch begins, the user-agent determines whether it is covered by the WAICT policy by checking the request's [destination](https://fetch.spec.whatwg.org/#concept-request-destination) against the stored `blocked-destinations` list. This information is conveyed in the response header and is always available to the user-agent, even if the manifest has not yet been loaded.
+Before [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) is invoked, the user-agent determines whether the request is covered by the WAICT policy by checking the [request](https://fetch.spec.whatwg.org/#concept-request)'s [`destination`](https://fetch.spec.whatwg.org/#concept-request-destination) against the stored `blocked-destinations` list for the top-level origin. This information is conveyed in the `Integrity-Policy-WAICT-v1` response header and is always available to the user-agent, even if the manifest has not yet been loaded.
 
 If the destination does not appear in the `blocked-destinations` list, the fetch proceeds without WAICT processing. Otherwise, the fetch is subject to the integrity checks described below.
 
-## Request Start
+## Request Setup
 
-For a fetch covered by WAICT, the user-agent performs two steps before sending the request.
+The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up the request (populating headers, priority, and other properties) before invoking [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch). For a covered request, WAICT adds the following steps during this request setup phase.
 
-First, the user-agent SHOULD set the request header `Integrity-Policy-WAICT-v1-Req` to the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
+First, the user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
 ```
 Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
@@ -202,44 +202,49 @@ Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
 
 Second, the user-agent determines the source of integrity metadata for this request. Inline [SRI](https://www.w3.org/TR/sri-2/) tags take precedence over manifest hashes:
 
-1. If the request has inline integrity metadata (i.e., an `integrity` attribute on the requesting element) and the parsed metadata is nonempty, the inline metadata will be used for integrity checking.
-2. Otherwise, the manifest will be consulted at request finish.
+1. If the request has inline [integrity metadata](https://fetch.spec.whatwg.org/#concept-request-integrity-metadata) (i.e., an `integrity` attribute on the requesting element) and the parsed metadata is nonempty, the inline metadata will be used for integrity checking.
+2. Otherwise, the manifest will be consulted during the integrity check.
 
 > [!NOTE]
 > Consider dropping the SRI aspect?
 
-## Response Streaming
+## Integrity Check
 
-As response data arrives, the user-agent SHOULD begin computing a SHA-256 hash of the response body, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
+After [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) dispatches the request and receives a response, it applies [filtered response](https://fetch.spec.whatwg.org/#concept-filtered-response) wrapping and response blocking checks, then performs integrity verification before proceeding to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale).
 
-Some user agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. If the WAICT policy is `enforce`, the user-agent's processing of incomplete responses MUST NOT be observable from within the document's context.
+The existing `main fetch` algorithm already handles [SRI integrity checking](https://w3c.github.io/webappsec-subresource-integrity/#does-response-match-metadatalist) when a request's [integrity metadata](https://fetch.spec.whatwg.org/#concept-request-integrity-metadata) is nonempty: the response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), checked against the metadata, and only then passed to `fetch response handover`. WAICT extends this step to also cover the case where integrity metadata comes from a manifest rather than an inline attribute.
 
-> [!NOTE]
-> This is intended to enable user-agents to engage in unobservable actions like speculatively fetching subresources from unverified responses which are critical for performance, provided those actions can't be used to bypass integrity checks.
-
-## Request Finish
-
-Once the response body is complete and the SHA-256 hash has been computed, the user-agent performs the integrity check.
+Although the integrity check requires the complete response body, user-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
 
 ### Inline SRI Path
 
-If inline integrity metadata was selected at request start, the user-agent runs the existing [SRI bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) with the inline metadata and the response bytes, and returns its result. The remainder of this section does not apply.
+If inline integrity metadata was selected during request setup, the existing [SRI bytes matching algorithm](https://www.w3.org/TR/sri-2/#does-response-match-metadatalist) is run with the inline metadata and the response bytes. Its result determines whether the fetch succeeds. The remainder of this section does not apply.
 
 ### Manifest Path
 
-If the manifest is the source of integrity metadata, the user-agent proceeds as follows:
+If the manifest is the source of integrity metadata, the response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read) and the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
-3. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
-4. Let `pathHash = manifest["hashes"][requestPath]`, or `undefined` if the path is not present.
-5. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
-6. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose path appears in `hashes` MUST match via its path hash; the wildcard check is never used as a fallback.
-7. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
+3. Let `reqPath` be the [initial URL](https://fetch.spec.whatwg.org/#concept-request) associated with the request.
+4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
+5. Let `pathHash` be the result of checking for a match between the url `reqPath` and the parsed urls in `manifest["hashes"]`, or `undefined` if the path is not present.
+6. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
+7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose path appears in `hashes` MUST match via its path hash; the wildcard check is never used as a fallback.
+8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
     2. Split `b` on `d` to obtain components `bb`. If `d` does not appear in `b`, then `bb` is a singleton containing `b`. If the number of components exceeds an implementation-defined limit, fail with reason `no_manifest_match`.
     3. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result appears in `wildcardHashes` using binary search. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
-8. Fail with reason `missing_from_manifest`.
+9. Fail with reason `missing_from_manifest`.
+
+If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
+
+### Speculative Processing
+
+Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. If the WAICT policy is `enforce`, the user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has passed and `main fetch` has proceeded to `fetch response handover`.
+
+> [!NOTE]
+> This is intended to enable user-agents to engage in unobservable actions like speculatively fetching subresources from unverified responses which are critical for performance, provided those actions can't be used to bypass integrity checks.
 
 ## Handling Failures
 
