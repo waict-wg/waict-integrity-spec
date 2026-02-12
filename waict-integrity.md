@@ -12,6 +12,8 @@ This document uses Structured Field Values for HTTP ([RFC 9651](https://www.rfc-
 
 In this document, `origin` refers to the tuple (scheme, host, port) as defined in [RFC 6454](https://www.rfc-editor.org/rfc/rfc6454).
 
+Where this document refers to base64 encoding, it means the standard alphabet defined in [RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4) (using `+` and `/` with `=` padding).
+
 > [!NOTE]
 > Editorial comments are indicated by the use of notes like these. These will be removed in the future.
 
@@ -37,7 +39,7 @@ The header is a structured response header (Dictionary type per [RFC 9651](https
 
 * `max-age` - An `sf-integer` that MUST be `>= 0`. How long (in seconds) user-agents MUST enforce WAICT after seeing this header (downgrade protection).
 * `mode` - An `sf-token` containing either `enforce` or `report`. In `enforce` mode, subresources that fail integrity checks are blocked from loading. In `report` mode, failures are reported but resources are still loaded.
-* `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin.
+* `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin's base URL.
 * `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored.
 
 If one or more of the mandatory keys is missing or invalid, the entire header MUST be ignored.
@@ -63,7 +65,7 @@ Websites using WAICT SHOULD set this response header on all of their same-origin
 WAICT state is scoped to the top-level origin and applies to requests made within the context of that origin. It does not extend to requests made by other top-level origins and so is compatible with the partitioning of state by top-level origin.
 When an origin is using WAICT, all requests made with a matching [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin) will be impacted by the WAICT security policy.
 
-When processing a response to a same-origin request (that is, the request's origin matches its top-level navigation initiator origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and SHOULD store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
+When processing a response whose origin matches the [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and SHOULD store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
 
 However, WAICT does not impact requests made to a WAICT-enforcing domain in other top-level contexts if those top-level contexts do not advertise WAICT themselves. User-agents MUST ignore `Integrity-Policy-WAICT-v1` headers set on responses whose origin does not match their current top-level navigation initiator origin. An example:
 
@@ -94,8 +96,8 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 2. Overwrite the manifest url with the latest `manifest` entry.
 3. For each supported entry in `blocked-destinations`, if there is no existing record, store the new record.
 4. Otherwise, compare the existing and new record:
-   1. If the new record is `enforce` and the previous record was `report`, update the entry, or
-   2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the entry.
+   1. If the new record is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
+   2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
    3. Otherwise, ignore the new record.
 
 Any record which has reached its effective expiry time MUST be removed.
@@ -125,7 +127,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 ## Fetching Manifests
 
-When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete until a manifest is available. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
+When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
 The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
@@ -135,8 +137,8 @@ GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` 
 
 The integrity manifest is a JSON object with the following structure:
 
-* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique. This field MUST be present.
-* The `wildcard_hashes` field is an optional sorted list of unique SHA-256 hashes (base64-encoded).
+* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique; if a JSON parser encounters duplicate keys, the manifest SHOULD be rejected as invalid. This field MUST be present.
+* The `wildcard_hashes` field is an optional lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
 * The `resource_delimiter` field is an optional string.
 * The `transparency_proof` field contains base64-encoded data. This field MUST be present.
 
@@ -233,7 +235,7 @@ If the manifest is the source of integrity metadata, the response body is [fully
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
     2. Split `b` on `d` to obtain components `bb`. If `d` does not appear in `b`, then `bb` is a singleton containing `b`. If the number of components exceeds an implementation-defined limit, fail with reason `no_manifest_match`.
-    3. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result appears in `wildcardHashes` using binary search. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
+    3. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
 9. Fail with reason `missing_from_manifest`.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
@@ -254,7 +256,7 @@ When an integrity check fails, the user-agent MUST take the following actions.
 In both `report` and `enforce` modes, the user-agent MUST:
 
 * Log the failure to the browser console and developer tools.
-* If the server has indicated support for the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API), report the error as a `waict-violation` to the endpoints specified in the `reporting-endpoints` field of the `Integrity-Policy-WAICT-v1` header.
+* If `reporting-endpoints` is non-empty, report the error as a `waict-violation` to the specified endpoints following the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API).
 
 The `waict-violation` report `body` includes the keys and values from [IntegrityViolationReportBody](https://developer.mozilla.org/en-US/docs/Web/API/IntegrityViolationReportBody), enriched with an entry `reason` indicating the cause of the failure:
 
@@ -275,7 +277,7 @@ Compliant user-agents MUST NOT display error messages to end-users who have not 
 
 In `enforce` mode, the behavior depends on whether the error is localized to a subresource:
 
-* If the error is localized to a subresource (e.g. the main page loaded successfully and the manifest is available), the user-agent MUST NOT make the resource available to the page.
+* If the error is localized to a subresource (e.g. the main page loaded successfully and the manifest is available), the user-agent MUST return a [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
 * If the error affects the page as a whole (e.g. the manifest could not be loaded), the user-agent MUST display a warning page indicating a WAICT error. The user-agent SHOULD NOT allow the user to bypass the warning.
 
 # Non-Normative Appendices
@@ -310,4 +312,4 @@ When used without `preload`, user-agents only get a security benefit once they h
 
 Using the `preload` functionality allows user-agents to benefit from the security of WAICT from their first visit and for as long as either the website is serving the WAICT header or the user-agent is receiving updates to its preload list.
 
-WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin fetching resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
+WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin hashing integrity-checked resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
