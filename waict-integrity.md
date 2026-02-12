@@ -84,8 +84,6 @@ User-agents MUST store WAICT state for a top-level origin in order to prevent do
 
 The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the WAICT enforcement mode. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
 
-TODO: WIP.
-
 ### Upgrades and Downgrades
 
 Origins may change their WAICT header over time. For example, an origin may evaluate WAICT in report mode and later switch to enforce mode. Alternatively, a site may be enforcing WAICT and wish to change the scope of covered resources, or even disable WAICT entirely. However, user-agents MUST enforce certain rules to prevent downgrade attacks - where a site alters its WAICT signalling in order to enable attacks.
@@ -94,7 +92,8 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 
 1. Overwrite the list of reporting endpoints with the latest contents of `reporting-endpoints`.
 2. Overwrite the manifest url with the latest `manifest` entry.
-3. For each supported entry in `blocked-destinations`, compare the existing and new record:
+3. For each supported entry in `blocked-destinations`, if there is no existing record, store the new record.
+4. Otherwise, compare the existing and new record:
    1. If the new record is `enforce` and the previous record was `report`, update the entry, or
    2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the entry.
    3. Otherwise, ignore the new record.
@@ -136,7 +135,7 @@ GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` 
 
 The integrity manifest is a JSON object with the following structure:
 
-* The `hashes` field is a dictionary mapping URL paths to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique. This field MUST be present.
+* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique. This field MUST be present.
 * The `wildcard_hashes` field is an optional sorted list of unique SHA-256 hashes (base64-encoded).
 * The `resource_delimiter` field is an optional string.
 * The `transparency_proof` field contains base64-encoded data. This field MUST be present.
