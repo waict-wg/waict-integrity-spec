@@ -127,7 +127,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 ## Fetching Manifests
 
-When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
+When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a site is operating in `report` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
 The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
@@ -242,7 +242,7 @@ If the integrity check succeeds, `main fetch` proceeds to [`fetch response hando
 
 ### Speculative Processing
 
-Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. If the WAICT policy is `enforce`, the user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has passed and `main fetch` has proceeded to `fetch response handover`.
+Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. The user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has passed and `main fetch` has proceeded to `fetch response handover`.
 
 > [!NOTE]
 > This is intended to enable user-agents to engage in unobservable actions like speculatively fetching subresources from unverified responses which are critical for performance, provided those actions can't be used to bypass integrity checks.
