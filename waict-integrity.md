@@ -46,14 +46,14 @@ If one or more of the mandatory keys is missing or invalid, the entire header MU
 The following key-value pairs are optional:
 
 * `preload` - An `sf-boolean`. Indicates the site wants to enforce WAICT indefinitely via a preload list. This field is not used directly by user-agents. `?0` (false) by default.
-* `reporting-endpoints` - Indicates endpoint(s) for submitting violations following [Integrity Policy Reporting](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). Empty by default.
+* `endpoints` - Indicates endpoint(s) for submitting violations following [Integrity Policy Reporting](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). Empty by default.
 
 Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
 
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, reporting-endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
@@ -92,7 +92,7 @@ Origins may change their WAICT header over time. For example, an origin may eval
 
 User-agents MUST follow this algorithm when updating their WAICT state:
 
-1. Overwrite the list of reporting endpoints with the latest contents of `reporting-endpoints`.
+1. Overwrite the list of reporting endpoints with the latest contents of `endpoints`.
 2. Overwrite the manifest url with the latest `manifest` entry.
 3. For each supported entry in `blocked-destinations`, if there is no existing record, store the new record.
 4. Otherwise, compare the existing and new record:
@@ -256,7 +256,7 @@ When an integrity check fails, the user-agent MUST take the following actions.
 In both `report` and `enforce` modes, the user-agent MUST:
 
 * Log the failure to the browser console and developer tools.
-* If `reporting-endpoints` is non-empty, report the error as a `waict-violation` to the specified endpoints following the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API).
+* If `endpoints` is non-empty, report the error as a `waict-violation` to the specified endpoints following the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API).
 
 The `waict-violation` report `body` includes the keys and values from [IntegrityViolationReportBody](https://developer.mozilla.org/en-US/docs/Web/API/IntegrityViolationReportBody), enriched with an entry `reason` indicating the cause of the failure:
 
