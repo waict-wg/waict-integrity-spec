@@ -28,6 +28,11 @@ Servers supporting WAICT SHOULD actively solicit client hints for WAICT by inclu
 For example, a user-agent that supports versions 1 and 2 of WAICT might send:
 
 `Sec-CH-WAICT: 1, 2`
+For example, a user-agent that supports versions 1 and 2 of WAICT might send:
+
+```HTTP
+Sec-CH-WAICT: 1, 2
+```
 
 # Signalling Use of WAICT
 
@@ -63,16 +68,18 @@ Websites using WAICT SHOULD set this response header on all of their same-origin
 ### Scope
 
 WAICT state is scoped to the top-level origin and applies to requests made within the context of that origin. It does not extend to requests made by other top-level origins and so is compatible with the partitioning of state by top-level origin.
-When an origin is using WAICT, all requests made with a matching [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin) will be impacted by the WAICT security policy.
+When an origin is using WAICT, all requests made with a same site [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin) will be impacted by the WAICT security policy.
 
-When processing a response whose origin matches the [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and SHOULD store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
+When processing a response whose origin is the same site as the [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and SHOULD store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
 
 However, WAICT does not impact requests made to a WAICT-enforcing domain in other top-level contexts if those top-level contexts do not advertise WAICT themselves. User-agents MUST ignore `Integrity-Policy-WAICT-v1` headers set on responses whose origin does not match their current top-level navigation initiator origin. An example:
 
 * `foo.com` and `bar.com` both embed resources located on each other's domains
 * `foo.com` uses WAICT and sets an enforcement header. `bar.com` does not use WAICT.
-* User-agents which navigate to pages on `foo.com` will enforce WAICT on sub-resource requests, including those for `bar.com`.
+User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store the record:
 * User-agents which navigate to `bar.com` will not enforce WAICT, even when loading sub-resources from `foo.com`.
+
+
 
 ### Storage
 
@@ -84,7 +91,7 @@ User-agents MUST store WAICT state for a top-level origin in order to prevent do
   * The mode (`enforce` or `report`)
   * The effective expiry time (`max-age` seconds from when the header was last seen)
 
-The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the WAICT enforcement mode. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
+The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the information described above. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
 
 ### Upgrades and Downgrades
 
@@ -94,13 +101,14 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 
 1. Overwrite the list of reporting endpoints with the latest contents of `endpoints`.
 2. Overwrite the manifest url with the latest `manifest` entry.
-3. For each supported entry in `blocked-destinations`, if there is no existing record, store the new record.
-4. Otherwise, compare the existing and new record:
-   1. If the new record is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
-   2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
-   3. Otherwise, ignore the new record.
+3. For each supported entry in `blocked-destinations`,
+   1. If there is no existing record, store the new record.
+   2. Otherwise, if there is an existing record, compare the existing and new record:
+      1. If the new record is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
+      2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
+      3. Otherwise, ignore the new record.
 
-Any record which has reached its effective expiry time MUST be removed.
+Any record which has reached its effective expiry time MUST be ignored and SHOULD be removed.
 
 This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
 
@@ -183,7 +191,7 @@ Manifests which do not follow these rules are invalid and MUST not be used.
 
 This section describes how WAICT modifies the lifecycle of network fetches for covered resources. The modifications are described in terms of the [Fetch Standard](https://fetch.spec.whatwg.org/) algorithms: [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) (the entry point), [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) (security checks, response handling, and integrity verification), and [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) (delivery of the response to the caller). See also the Fetch Standard's guidance on [invoking fetch and processing responses](https://fetch.spec.whatwg.org/#fetch-elsewhere-fetch).
 
-WAICT integrity checks apply to the final response bytes delivered to the document, after any processing by [Service Workers](https://www.w3.org/TR/service-workers/). This is consistent with the behavior of [SRI](https://www.w3.org/TR/sri-2/).
+WAICT integrity checks apply to the unencoded response bytes delivered to the document, after any processing by [Service Workers](https://www.w3.org/TR/service-workers/). This is consistent with the behavior of [SRI](https://www.w3.org/TR/sri-2/).
 
 ## Determine Coverage
 
@@ -229,12 +237,12 @@ If the manifest is the source of integrity metadata, the response body is [fully
 2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
-5. Let `pathHash` be the hash value from `manifest["hashes"]` whose canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
+5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
 6. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
 7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
-    2. Split `b` on `d` to obtain components `bb`. If `d` does not appear in `b`, then `bb` is a singleton containing `b`. If the number of components exceeds an implementation-defined limit, fail with reason `no_manifest_match`.
+Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. The user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has completed and `main fetch` has proceeded to `fetch response handover`.
     3. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
 9. Fail with reason `missing_from_manifest`.
 
@@ -242,7 +250,7 @@ If the integrity check succeeds, `main fetch` proceeds to [`fetch response hando
 
 ### Speculative Processing
 
-Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. The user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has passed and `main fetch` has proceeded to `fetch response handover`.
+Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. The user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has completed and `main fetch` has proceeded to `fetch response handover`.
 
 > [!NOTE]
 > This is intended to enable user-agents to engage in unobservable actions like speculatively fetching subresources from unverified responses which are critical for performance, provided those actions can't be used to bypass integrity checks.
@@ -263,7 +271,6 @@ The `waict-violation` report `body` includes the keys and values from [Integrity
 * `manifest_unavailable` - The manifest for the origin could not be loaded.
 * `invalid_manifest` - The manifest was loaded, but was malformed, had unexpected types, or was missing required fields (including `transparency_proof`).
 * `invalid_transparency_proof` - A manifest and transparency proof were provided, but the proof could not be parsed.
-* `untrusted_transparency_proof` - A manifest and transparency proof were provided, but the proof could not be authenticated.
 * `missing_from_manifest` - A valid manifest was available, but this resource was not covered.
 * `no_manifest_match` - A valid manifest was available and described this resource, but the resource did not match the manifest entry.
 
@@ -271,14 +278,14 @@ The `waict-violation` report `body` includes the keys and values from [Integrity
 
 In `report` mode, the user-agent MUST still load the resource. Report mode is intended for web developers to validate their deployment; it does not provide security for user-agents.
 
-Compliant user-agents MUST NOT display error messages to end-users who have not indicated they wish to see additional technical information.
+Compliant user-agents SHALL NOT display error messages to end-users who have not indicated they wish to see additional technical information.
 
 ### Enforce Mode
 
-In `enforce` mode, the behavior depends on whether the error is localized to a subresource:
+In `enforce` mode, the behavior depends on the failure type:
 
-* If the error is localized to a subresource (e.g. the main page loaded successfully and the manifest is available), the user-agent MUST return a [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
-* If the error affects the page as a whole (e.g. the manifest could not be loaded), the user-agent MUST display a warning page indicating a WAICT error. The user-agent SHOULD NOT allow the user to bypass the warning.
+* `manifest_unavailable`, `invalid_manifest`, `invalid_transparency_proof` - the user-agent MUST display a warning page to the user indicating the error. The user-agent SHOULD NOT allow the user to bypass the warning.
+* `missing_from_manifest`, `no_manifest_match` -The user-agent MUST return an appropriate [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
 
 # Non-Normative Appendices
 
