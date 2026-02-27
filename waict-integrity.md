@@ -303,6 +303,16 @@ The use of preload is a specialist feature which is unlikely to be suitable for 
 
 Sites wishing to stop using WAICT should stop serving the enforcement header and wait out their previously set `max-age`. Sites may be able to unenroll through the use of the opt-out signal described in the [proofs specification](waict-proofs.md).
 
+### Web Application Versioning
+
+When deploying a web application (without WAICT), operators must ensure clients observe a consistent version of the application. For example, if an application depends on foo.js and bar.js, a deployment can break if a client loads an older version of foo.js alongside a newer version of bar.js.
+
+WAICT is designed to interoperate cleanly with existing versioning strategies that provide atomic application views. The WAICT manifest is simply another versioned resource and should be treated the same way as the associated scripts and assets.
+
+In practice, operators need only ensure that any response carrying a WAICT header references a manifest that includes the served resource. This can be handled at build time: generate the manifest as part of the existing versioning process and associate it with the corresponding artifacts so the correct header is emitted with each response.
+
+When publishing a new version of the application, the new resources can be associated with the new manifest.
+
 ## Security Considerations
 
 This design emulates that of RFC 6797 (HSTS).
