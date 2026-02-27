@@ -113,11 +113,13 @@ Any record which has reached its effective expiry time MUST be ignored and SHOUL
 This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
 
 > [!NOTE]
-> These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement.
+> These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement. Currently tilting towards option b) after discussion.
 
 ### Preloading
 
-Websites can signal their desire for user-agent vendors to preload WAICT status onto their user-agents. As a general rule, websites SHOULD NOT preload WAICT status. Preloading WAICT may lead to irrecoverable errors for user-agents.
+Websites can signal their desire for user-agent vendors to preload WAICT status onto their user-agents. Preloading is not a signal consumed directly by user-agents and user-agents MUST ignore this parameter.
+
+As a general rule, websites SHOULD NOT preload WAICT status. Preloading WAICT may lead to irrecoverable errors for user-agents.
 
 The details of how user-agent vendors are alerted to this are vendor-specific, but websites wishing user-agent vendors to preload MUST use an `Integrity-Policy-WAICT-v1` header with:
 
