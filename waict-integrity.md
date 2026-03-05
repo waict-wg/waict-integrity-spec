@@ -238,7 +238,6 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
-Some user-agents begin processing responses before they are complete, for example, streaming HTML into a parser or rendering an incomplete image. The user-agent's processing of incomplete responses MUST NOT be observable from within the document's context until the integrity check has completed and `main fetch` has proceeded to `fetch response handover`.
     1. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
 1. Fail with reason `missing_from_manifest`.
 
