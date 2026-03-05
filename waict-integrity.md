@@ -50,7 +50,7 @@ The header is a structured response header (Dictionary type per [RFC 9651](https
 If one or more of the mandatory keys is missing or invalid, the entire header MUST be ignored.
 The following key-value pairs are optional:
 
-* `preload` - An `sf-boolean`. Indicates the site wants to enforce WAICT indefinitely via a preload list. This field is not used directly by user-agents. `?0` (false) by default.
+* `preload` - An `sf-boolean`. Indicates the site wants to enforce WAICT indefinitely (with transparency enabled) via a preload list. This field is not used directly by user-agents. `?0` (false) by default.
 * `endpoints` - Indicates endpoint(s) for submitting violations following [Integrity Policy Reporting](https://w3c.github.io/webappsec-subresource-integrity/#integrity-policy-section). Empty by default.
 
 Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
@@ -320,9 +320,5 @@ As a consequence, this design ensures that websites continue to maintain availab
 The use of the `Integrity-Policy-WAICT-v1` header is essential for the overall security of WAICT. User-agents must be aware of the need to enforce WAICT in order to gain security benefits from it.
 
 User-agents only gain a security benefit from the use of `enforce` mode. User-agents do not gain a security benefit from the use of `report` mode.
-
-When used without `preload`, user-agents only get a security benefit once they have visited the website and seen the enforcement header. This security benefit is only retained if their next visit to the website falls within the `max-age` window.
-
-Using the `preload` functionality allows user-agents to benefit from the security of WAICT from their first visit and for as long as either the website is serving the WAICT header or the user-agent is receiving updates to its preload list.
 
 WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin hashing integrity-checked resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
