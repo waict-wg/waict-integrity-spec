@@ -1,4 +1,4 @@
-# WAICT - Signalling and Integrity v0.3
+# WAICT - Signalling and Integrity
 
 Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged in a transparency service. This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
 
@@ -55,10 +55,12 @@ The following key-value pairs are optional:
 
 Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
 
+The data located at the `manifest` URL in MUST be immutable, i.e., the unencoded response body of a successful GET request to that URL MUST never change. To achieve this, implementers SHOULD include a SHA-256 hash of the unencoded response body in the URL itself, encoded in base64url, and truncated to 22 characters (corresponding to 128 bits of the hash).
+
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
