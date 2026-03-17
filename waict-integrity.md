@@ -63,6 +63,8 @@ Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
 
+Note that, when `blocked-destinations` contains `document`, integrity enforcement is enabled for the primary HTML resource loaded on a page request.
+
 ## User-Agent Processing of Response Header
 
 ### Scope
@@ -158,6 +160,7 @@ An example is given below:
 {
   "hashes": {
     "/assets/x.html": "r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY=",
+    "/index.html": "RDH4jl3bEmJ57FfL9fPwzNbnEu5p/rUM9TQbENpI9Qw=",
     "/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
     "/favicon.ico": "zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0="
   },
