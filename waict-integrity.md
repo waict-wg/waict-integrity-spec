@@ -143,7 +143,13 @@ When a site is operating in `enforce` mode, network fetches for covered resource
 
 The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
-GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest` as described in the next section.
+GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest`. Repsonses with this type contain a _manifest_ line, whose JSON structure is defined in the next section, and an optional _transparency proof_ line. More precisely, the response body is of the form:
+```
+manifest | U+000A [| transparency_proof | U+000A]
+```
+where `manifest` is a UTF-8-encoded JSON object with no leading or trailing whitespace and containing no ASCII control characters (those below U+0020), and `transparency_proof` is a bas64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree.
+
+Servers SHOULD use a suitable compression scheme as negotiated by the user-agent.
 
 ## Manifest Structure
 
@@ -152,12 +158,11 @@ The integrity manifest is a JSON object with the following structure. All fields
 * `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
 * `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
-* `transparency_proof` — contains base64-encoded data.
 
 > [!NOTE]
 > The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
-An example is given below:
+An example is given below (with added whitespace for readability):
 
 ```json
 {
@@ -172,7 +177,6 @@ An example is given below:
     "0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
   ],
   "resource_delimiter": "/* MY DELIM */",
-  "transparency_proof": "Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf..."
 }
 ```
 
@@ -224,7 +228,7 @@ Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_Mjp
 
 WAICT v1 always uses SHA-256 for hashing. This allows the user-agent to begin hashing covered resources from the start of a request, even if no manifest is yet available to specify the expected SHA-256 hash. User-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
 
-A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` reponse header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state. 
+A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` reponse header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state.
 
 ## Integrity Check
 
