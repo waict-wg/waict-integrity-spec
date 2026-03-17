@@ -145,12 +145,15 @@ GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` 
 
 ## Manifest Structure
 
-The integrity manifest is a JSON object with the following structure:
+The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
-* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique; if a JSON parser encounters duplicate keys, the manifest SHOULD be rejected as invalid. This field MUST be present.
-* The `wildcard_hashes` field is an optional lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
-* The `resource_delimiter` field is an optional string.
-* The `transparency_proof` field contains base64-encoded data. This field MUST be present.
+* `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
+* `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
+* `resource_delimiter` (optional) — a string used for splitting subresource contents.
+* `transparency_proof` — contains base64-encoded data.
+
+> [!NOTE]
+> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
 An example is given below:
 
@@ -173,21 +176,20 @@ An example is given below:
 
 The meaning and use of these fields is described in the next section.
 
-> [!NOTE]
-> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
-
 ## Validating Manifests
 
-Manifests must be parsed and validated subject to the following rules:
+Manifests do not need to be validated in their entirety before they are used for integrity verification logic. However, if a user-agent finds a violation of any of the below rules during its use of a manifest, it MUST halt all current integrity checks with respect to that manifest, and all future integrity checks with respect to that manifest as long as the manifest is cached by the user-agent.
 
-* The mandatory keys `hashes` and `transparency_proof` MUST be present.
-* Unrecognized top level keys MUST be ignored.
-* Hash values in `hashes` and `wildcard_hashes` must be valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
-* Each key of `hashes` must be parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative). If parsing fails, the manifest is invalid. The parsed URL MUST have an empty [fragment](https://url.spec.whatwg.org/#concept-url-fragment); if it does, the manifest is invalid. After parsing, the key's canonical form is the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of the parsed URL with the *exclude fragment* flag set. If two keys produce the same canonical form, the manifest is invalid.
+Manifests MUST have the following properties:
+
+* All mandatory keys are present.
+* Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
+* `hashes` contains no duplicate keys.
+
+Finally, all top-level manifest dictionary items not specified in the previous section MUST be ignored.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
-
-Manifests which do not follow these rules are invalid and MUST not be used.
 
 # Changes to Network Fetches
 
