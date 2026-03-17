@@ -174,6 +174,8 @@ An example is given below:
 }
 ```
 
+All top-level items not specified above MUST be ignored. If there are duplicate keys at any level, then the last occurrence is the one used in the parsed result.
+
 The meaning and use of these fields is described in the next section.
 
 ## Validating Manifests
@@ -185,9 +187,6 @@ Manifests MUST have the following properties:
 * All mandatory keys are present.
 * Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
 * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
-* `hashes` contains no duplicate keys.
-
-Finally, all top-level manifest dictionary items not specified in the previous section MUST be ignored.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
 
