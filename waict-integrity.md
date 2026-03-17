@@ -147,7 +147,7 @@ GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` 
 ```
 manifest | U+000A [| transparency_proof | U+000A]
 ```
-where `manifest` is a UTF-8-encoded JSON object with no leading or trailing whitespace and containing no ASCII control characters (those below U+0020), and `transparency_proof` is a bas64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree.
+where `manifest` is a UTF-8-encoded JSON object with no leading or trailing whitespace and containing no ASCII control characters (those below U+0020), and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. The user-agent MUST reject a response that is invalid UTF-8, contains more than two U+000A codepoints, or contains any other ASCII control character.
 
 Servers SHOULD use a suitable compression scheme as negotiated by the user-agent.
 
