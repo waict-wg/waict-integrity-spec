@@ -214,7 +214,7 @@ Otherwise, the fetch is subject to the integrity checks described below.
 
 ## Request Setup
 
-The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up the request (populating headers, priority, and other properties) before invoking [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch). For a covered request, WAICT adds the following steps during this request setup phase.
+The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up the request (populating headers, priority, and other properties) before invoking [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch). For a request whose destination is in the active `blocked-destinations` list, WAICT adds the following steps during this request setup phase.
 
 The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
@@ -242,7 +242,7 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
     1. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
-1. Fail with reason `missing_from_manifest`.
+9. If the request destination is `document`, `style`, or `script`, fail with reason `missing_from_manifest`. Otherwise return success.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
 
