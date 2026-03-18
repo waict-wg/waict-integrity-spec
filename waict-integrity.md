@@ -44,7 +44,7 @@ The header is a structured response header (Dictionary type per [RFC 9651](https
 
 * `max-age` - An `sf-integer` that MUST be `>= 0`. How long (in seconds) user-agents MUST enforce WAICT after seeing this header (downgrade protection).
 * `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin's base URL.
-* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored. Each inner list item MUST have a parameter whose key is `mode` and whose value is one of `enforce`, `report`, `enforce-if-present`, or `report-if-present`.
+* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored. Each token MUST have a parameter whose key is `mode` and whose value is an `sf-token` which is one of `enforce`, `report`, `enforce-if-present`, or `report-if-present`. Unrecognized parameters MUST be ignored.
 
 In `enforce*` coverage modes, subresources that fail integrity checks are blocked from loading. In `report*` coverage modes, failures are reported but resources are still loaded. In `*-if-present` coverage modes, the integrity check are only performed if the subresource's URL appears in the manifest.
 
@@ -114,7 +114,7 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 
 Any record which has reached its effective expiry time MUST be ignored and SHOULD be removed.
 
-This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage (i.e., transition `enforce -> report` or `report -> enforce-if-present`) after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
+This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage (i.e., transition `enforce → report` or `report → enforce-if-present`) after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
 
 > [!NOTE]
 > These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement. Currently tilting towards option b) after discussion.
