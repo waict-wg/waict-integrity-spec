@@ -43,9 +43,10 @@ Websites signal that they want user-agents to enforce WAICT through the use of t
 The header is a structured response header (Dictionary type per [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651)). The following key-value pairs MUST be present:
 
 * `max-age` - An `sf-integer` that MUST be `>= 0`. How long (in seconds) user-agents MUST enforce WAICT after seeing this header (downgrade protection).
-* `mode` - An `sf-token` containing either `enforce` or `report`. In `enforce` mode, subresources that fail integrity checks are blocked from loading. In `report` mode, failures are reported but resources are still loaded.
 * `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin's base URL.
-* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored.
+* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored. Each inner list item MUST have a parameter whose key is `mode` and whose value is one of `enforce`, `report`, `enforce-if-present`, or `report-if-present`.
+
+In `enforce*` coverage modes, subresources that fail integrity checks are blocked from loading. In `report*` coverage modes, failures are reported but resources are still loaded. In `*-if-present` coverage modes, the integrity check are only performed if the subresource's URL appears in the manifest.
 
 If one or more of the mandatory keys is missing or invalid, the entire header MUST be ignored.
 The following key-value pairs are optional:
@@ -58,12 +59,12 @@ Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREAS
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1: max-age=90, blocked-destinations=(script;mode=enforce style;mode=enforce video;mode=report image;mode=enforce-if-present), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
 
-Note that, when `blocked-destinations` contains `document`, integrity enforcement is enabled for the primary HTML resource loaded on a page request.
+Note that the `document` destination in `blocked-destinations` indicates integrity enforcement for the primary HTML resource loaded on a page request. For example, if it has parameter `mode=enforce` then the primary HTML resource will be only load if its URL appears in the manifest and the hash matches.
 
 ## User-Agent Processing of Response Header
 
@@ -90,14 +91,14 @@ User-agents MUST store WAICT state for a top-level origin in order to prevent do
 * The list of reporting endpoints
 * The manifest url
 * For each supported entry in `blocked-destinations`:
-  * The mode (`enforce` or `report`)
+  * The coverage mode
   * The effective expiry time (`max-age` seconds from when the header was last seen)
 
 The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the information described above. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
 
 ### Upgrades and Downgrades
 
-Origins may change their WAICT header over time. For example, an origin may evaluate WAICT in report mode and later switch to enforce mode. Alternatively, a site may be enforcing WAICT and wish to change the scope of covered resources, or even disable WAICT entirely. However, user-agents MUST enforce certain rules to prevent downgrade attacks - where a site alters its WAICT signalling in order to enable attacks.
+Origins may change their WAICT header over time. For example, an origin may load CSS in `report` mode and later switch to `enforce` mode. Alternatively, a site may be enforcing WAICT and wish to change the scope of covered resources, or even disable WAICT entirely. However, user-agents MUST enforce certain rules to prevent downgrade attacks - where a site alters its WAICT signalling in order to enable attacks.
 
 User-agents MUST follow this algorithm when updating their WAICT state:
 
@@ -106,13 +107,14 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 3. For each supported entry in `blocked-destinations`,
    1. If there is no existing record, store the new record.
    2. Otherwise, if there is an existing record, compare the existing and new record:
-      1. If the new record is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
-      2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
-      3. Otherwise, ignore the new record.
+      1. If the new record is `enforce` and the previous record was `report` or `report-if-present`, update the entry with the new mode and effective expiry, or
+      2. If the new record is `X` and the previous record was `X-if-present` for any `X`, update the entry with the new mode and effective expiry, or
+      3. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
+      4. Otherwise, ignore the new record.
 
 Any record which has reached its effective expiry time MUST be ignored and SHOULD be removed.
 
-This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
+This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage (i.e., transition `enforce -> report` or `report -> enforce-if-present`) after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
 
 > [!NOTE]
 > These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement. Currently tilting towards option b) after discussion.
@@ -125,7 +127,6 @@ As a general rule, websites SHOULD NOT preload WAICT status. Preloading WAICT ma
 
 The details of how user-agent vendors are alerted to this are vendor-specific, but websites wishing user-agent vendors to preload MUST use an `Integrity-Policy-WAICT-v1` header with:
 
-* `mode` set to `enforce`.
 * `preload` set to `?1`.
 * `max-age` set to a value greater than or equal to 1 year (`31536000` seconds).
 
@@ -139,7 +140,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 ## Fetching Manifests
 
-When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a site is operating in `report` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
+When a destination's coverage mode is set to `enforce` or `enforce-if-present`, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a destination's coverage mode is set to `report` or `report-if-present`, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
 The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
@@ -242,9 +243,9 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
     1. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
-9. If the request destination is `document`, `style`, or `script`, fail with reason `missing_from_manifest`. Otherwise return success.
+9. If the coverage mode for the request's destination is `enforce` or `report`, fail with reason `missing_from_manifest`. Otherwise return success.
 
-If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
+If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the coverage mode as described in [Handling Failures](#handling-failures).
 
 ### Speculative Processing
 
@@ -259,7 +260,7 @@ When an integrity check fails, the user-agent MUST take the following actions.
 
 ### Reporting
 
-In both `report` and `enforce` modes, the user-agent MUST:
+In all coverage modes, the user-agent MUST:
 
 * Log the failure to the browser console and developer tools.
 * If `endpoints` is non-empty, report the error as a `waict-violation` to the specified endpoints following the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API).
@@ -274,13 +275,13 @@ The `waict-violation` report `body` includes the keys and values from [Integrity
 
 ### Report Mode
 
-In `report` mode, the user-agent MUST still load the resource. Report mode is intended for web developers to validate their deployment; it does not provide security for user-agents.
+In `report` and `report-if-present` coverage modes, the user-agent MUST still load the resource. These modes are intended for web developers to validate their deployment; they do not provide security for user-agents.
 
 Compliant user-agents SHALL NOT display error messages to end-users who have not indicated they wish to see additional technical information.
 
-### Enforce Mode
+### Enforce Modes
 
-In `enforce` mode, the behavior depends on the failure type:
+In `enforce` and `enforce-if-present` coverage modes, the behavior depends on the failure type:
 
 * `manifest_unavailable`, `invalid_manifest`, `invalid_transparency_proof` - the user-agent MUST display a warning page to the user indicating the error. The user-agent SHOULD NOT allow the user to bypass the warning.
 * `missing_from_manifest`, `no_manifest_match` -The user-agent MUST return an appropriate [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
@@ -289,11 +290,11 @@ In `enforce` mode, the behavior depends on the failure type:
 
 ## Server Operator Advice
 
-Server operators should be cautious when deploying WAICT enforcement. In general, there is no recourse for a faulty deployment in `enforce` mode, other than waiting out the `max-age` period. In the event of a faulty deployment and the use of `preload`, the waiting-out period is potentially unbounded.
+Server operators should be cautious when deploying WAICT enforcement. In general, there is no recourse for a faulty deployment in `enforce` and `enforce-if-present` modes, other than waiting out the `max-age` period. In the event of a faulty deployment and the use of `preload`, the waiting-out period is potentially unbounded.
 
-Server operators are recommended to deploy WAICT in `report` mode initially and gain confidence in their deployment gradually. Server operators should treat reported errors seriously. Every reported error will result in a broken user-agent if `enforce` is enabled.
+Server operators are recommended to deploy WAICT in `report` and `report-if-present` modes initially and gain confidence in their deployment gradually. Server operators should treat reported errors seriously. Every reported error will result in a broken user-agent if `enforce` is enabled.
 
-Once a server operator has become confident in their use of `report` mode, they should consider switching to `enforce` mode with a low `max-age`, e.g. on the order of minutes. As time passes, server operators should consider raising the `max-age`.
+Once a server operator has become confident in their use of report modes, they should consider switching to enforce modes using a low `max-age`, e.g. on the order of minutes. As time passes, server operators should consider raising the `max-age`.
 
 The exact age that server operators settle on is a tradeoff between the maximum recovery time for their site and how often users are expected to visit their site and still need a security benefit.
 
@@ -321,6 +322,6 @@ As a consequence, this design ensures that websites continue to maintain availab
 
 The use of the `Integrity-Policy-WAICT-v1` header is essential for the overall security of WAICT. User-agents must be aware of the need to enforce WAICT in order to gain security benefits from it.
 
-User-agents only gain a security benefit from the use of `enforce` mode. User-agents do not gain a security benefit from the use of `report` mode.
+User-agents only gain a security benefit from the use of `enforce` and `enforce-if-present` modes. User-agents do not gain a security benefit from the use of `report` or `report-if-present` modes.
 
 WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin hashing integrity-checked resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
