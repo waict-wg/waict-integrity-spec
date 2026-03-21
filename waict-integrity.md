@@ -221,6 +221,8 @@ Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
 
 WAICT v1 always uses SHA-256 for hashing. This allows the user-agent to begin hashing covered resources from the start of a request, even if no manifest is yet available to specify the expected SHA-256 hash. User-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
 
+A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` reponse header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state. 
+
 ## Integrity Check
 
 After [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) dispatches the request and receives a response, it applies [filtered response](https://fetch.spec.whatwg.org/#concept-filtered-response) wrapping and response blocking checks, then performs integrity verification before proceeding to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale).
