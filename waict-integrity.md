@@ -1,6 +1,8 @@
 # WAICT - Signalling and Integrity
 
-Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged in a transparency service. This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
+Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged with a transparency service.
+
+This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
 
 WAICT's integrity model builds upon [Subresource Integrity (SRI)](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Subresource_Integrity) and the [Integrity-Policy header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Integrity-Policy). This document describes how WAICT is signalled by user-agents and websites and how the integrity of web applications is assured. The transparency of web applications is described in a separate specification.
 
@@ -25,9 +27,6 @@ To signal WAICT support, the [user agent client hint](https://wicg.github.io/ua-
 
 Servers supporting WAICT SHOULD actively solicit client hints for WAICT by including `Sec-CH-WAICT` in their `Accept-CH` response header (See [Section 3.1 of RFC 8942](https://www.rfc-editor.org/rfc/rfc8942#section-3.1)). Servers MUST tolerate unknown integers in the `Sec-CH-WAICT` request header.
 
-For example, a user-agent that supports versions 1 and 2 of WAICT might send:
-
-`Sec-CH-WAICT: 1, 2`
 For example, a user-agent that supports versions 1 and 2 of WAICT might send:
 
 ```HTTP
@@ -58,11 +57,11 @@ The data located at the `manifest` URL in MUST be immutable, i.e., the unencoded
 
 An example header is given below:
 
-```
+```HTTP
 Integrity-Policy-WAICT-v1: max-age=90, mode=report, preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
-Websites using WAICT SHOULD set this response header on all of their same-origin responses.
+Websites using WAICT SHOULD set a WAICT response header on all of their same-origin responses.
 
 ## User-Agent Processing of Response Header
 
@@ -77,14 +76,12 @@ However, WAICT does not impact requests made to a WAICT-enforcing domain in othe
 
 * `foo.com` and `bar.com` both embed resources located on each other's domains
 * `foo.com` uses WAICT and sets an enforcement header. `bar.com` does not use WAICT.
-User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store the record:
+* User-agents which navigate to `foo.com` will enforce WAICT, even when loading sub-resources from `bar.com`.
 * User-agents which navigate to `bar.com` will not enforce WAICT, even when loading sub-resources from `foo.com`.
-
-
 
 ### Storage
 
-User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store:
+User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store the record:
 
 * The list of reporting endpoints
 * The manifest url
@@ -115,7 +112,7 @@ This algorithm ensures that sites can upgrade their WAICT coverage immediately. 
 
 Websites can signal their desire for user-agent vendors to preload WAICT status onto their user-agents. Preloading is not a signal consumed directly by user-agents and user-agents MUST ignore this parameter.
 
-As a general rule, websites SHOULD NOT preload WAICT status. Preloading WAICT may lead to irrecoverable errors for user-agents.
+As a general rule, websites SHOULD NOT request user-agents preload their WAICT status. Preloading WAICT may lead to irrecoverable errors for user-agents.
 
 The details of how user-agent vendors are alerted to this are vendor-specific, but websites wishing user-agent vendors to preload MUST use an `Integrity-Policy-WAICT-v1` header with:
 
