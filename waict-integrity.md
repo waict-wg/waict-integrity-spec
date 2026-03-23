@@ -147,12 +147,15 @@ GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` 
 
 ## Manifest Structure
 
-The integrity manifest is a JSON object with the following structure:
+The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
-* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique; if a JSON parser encounters duplicate keys, the manifest SHOULD be rejected as invalid. This field MUST be present.
-* The `wildcard_hashes` field is an optional lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
-* The `resource_delimiter` field is an optional string.
-* The `transparency_proof` field contains base64-encoded data. This field MUST be present.
+* `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
+* `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
+* `resource_delimiter` (optional) — a string used for splitting subresource contents.
+* `transparency_proof` — contains base64-encoded data.
+
+> [!NOTE]
+> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
 An example is given below:
 
@@ -160,7 +163,7 @@ An example is given below:
 {
   "hashes": {
     "/assets/x.html": "r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY=",
-    "/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
+    "https://my-fave-cdn.example/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
     "/favicon.ico": "zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0="
   },
   "wildcard_hashes": [
@@ -173,23 +176,21 @@ An example is given below:
 }
 ```
 
-The meaning and use of these fields is described in the next section.
+All top-level items not specified above MUST be ignored. If there are duplicate keys at any level, then the last occurrence is the one used in the parsed result.
 
-> [!NOTE]
-> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
+The meaning and use of these fields is described in the next section.
 
 ## Validating Manifests
 
-Manifests must be parsed and validated subject to the following rules:
+Manifests do not need to be validated in their entirety before they are used for integrity checking. However, if a user-agent finds a violation of any of the below rules during its use of a manifest, it MUST mark it internally as an invalid manifest. This will cause all future integrity checks with respect to this manifest to fail, as described below in the integrity checking algorithm. This mark MUST be retained for as long as the manifest is cached by the user-agent.
 
-* The mandatory keys `hashes` and `transparency_proof` MUST be present.
-* Unrecognized top level keys MUST be ignored.
-* Hash values in `hashes` and `wildcard_hashes` must be valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
-* Each key of `hashes` must be parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative). If parsing fails, the manifest is invalid. The parsed URL MUST have an empty [fragment](https://url.spec.whatwg.org/#concept-url-fragment); if it does, the manifest is invalid. After parsing, the key's canonical form is the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of the parsed URL with the *exclude fragment* flag set. If two keys produce the same canonical form, the manifest is invalid.
+Manifests MUST have the following properties:
+
+* All mandatory keys are present.
+* Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
-
-Manifests which do not follow these rules are invalid and MUST not be used.
 
 # Changes to Network Fetches
 
@@ -234,7 +235,7 @@ The existing `main fetch` algorithm already handles [SRI integrity checking](htt
 The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read) and the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
-2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
+2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
 5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
