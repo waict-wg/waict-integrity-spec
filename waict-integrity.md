@@ -1,4 +1,4 @@
-# WAICT - Signalling and Integrity v0.3
+# WAICT - Signalling and Integrity
 
 Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged in a transparency service. This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
 
@@ -55,10 +55,12 @@ The following key-value pairs are optional:
 
 Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
 
+The data located at the `manifest` URL in MUST be immutable, i.e., the unencoded response body of a successful GET request to that URL MUST never change. To achieve this, implementers SHOULD include a SHA-256 hash of the unencoded response body in the URL itself, encoded in base64url, and truncated to 22 characters (corresponding to 128 bits of the hash).
+
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
@@ -139,7 +141,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a site is operating in `report` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
-The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
+The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
 GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest` as described in the next section.
 
@@ -216,7 +218,7 @@ The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up th
 The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
 ```
-Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 WAICT v1 always uses SHA-256 for hashing. This allows the user-agent to begin hashing covered resources from the start of a request, even if no manifest is yet available to specify the expected SHA-256 hash. User-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
