@@ -1,4 +1,4 @@
-# WAICT - Signalling and Integrity v0.3
+# WAICT - Signalling and Integrity
 
 Web Application Integrity, Consistency, and Transparency (WAICT) enables websites to opt-in to a stronger security model which provides enhanced security for user-agents. When a website has opted in to WAICT, user-agents can be assured that web applications served by the website have been publicly logged in a transparency service. This enables third parties to inspect the web application served to user-agents and so mitigate the risk of a compromised website serving malicious code. This security guarantee is particularly important for threat models where the server is not trusted by the user-agent, for example, in End-to-End Encrypted messaging.
 
@@ -56,10 +56,12 @@ The following key-value pairs are optional:
 
 Any other keys MUST be ignored.  Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
 
+The data located at the `manifest` URL in MUST be immutable, i.e., the unencoded response body of a successful GET request to that URL MUST never change. To achieve this, implementers SHOULD include a SHA-256 hash of the unencoded response body in the URL itself, encoded in base64url, and truncated to 22 characters (corresponding to 128 bits of the hash).
+
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, blocked-destinations=(script;mode=enforce style;mode=enforce video;mode=report image;mode=enforce-if-present), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1: max-age=90, blocked-destinations=(script;mode=enforce style;mode=enforce video;mode=report image;mode=enforce-if-present), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
@@ -142,18 +144,26 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 When a destination's coverage mode is set to `enforce` or `enforce-if-present`, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a destination's coverage mode is set to `report` or `report-if-present`, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
-The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
+The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
-GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest` as described in the next section.
+The response content type of a successful GET to a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST be `application/waict-integrity-manifest` (TODO: reserve this MIME type). Repsonses with this type contain a _manifest_ JSON blob whose structure is defined in the next section, and a _transparency proof_ line. More precisely, the response body is of the form:
+```
+manifest | U+000A | transparency_proof | U+000A
+```
+where `|` represents concatenation, `manifest` is a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8,  contains fewer than than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
+
+Servers SHOULD use a suitable compression scheme as negotiated by the user-agent.
 
 ## Manifest Structure
 
-The integrity manifest is a JSON object with the following structure:
+The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
-* The `hashes` field is a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded. Keys MUST be unique; if a JSON parser encounters duplicate keys, the manifest SHOULD be rejected as invalid. This field MUST be present.
-* The `wildcard_hashes` field is an optional lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
-* The `resource_delimiter` field is an optional string.
-* The `transparency_proof` field contains base64-encoded data. This field MUST be present.
+* `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
+* `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
+* `resource_delimiter` (optional) — a string used for splitting subresource contents.
+
+> [!NOTE]
+> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
 An example is given below:
 
@@ -163,6 +173,7 @@ An example is given below:
     "/assets/x.html": "r4j9yW07mpTFSQ6ZRYOV0Au8Hfn2NqjqQMBqKL/SWCY=",
     "/index.html": "RDH4jl3bEmJ57FfL9fPwzNbnEu5p/rUM9TQbENpI9Qw=",
     "/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
+    "https://my-fave-cdn.example/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
     "/favicon.ico": "zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0="
   },
   "wildcard_hashes": [
@@ -171,27 +182,24 @@ An example is given below:
     "0SsmrVFFC7wxU4QM5UeZeXBnyKlXTAzfkVsZXIrzabo="
   ],
   "resource_delimiter": "/* MY DELIM */",
-  "transparency_proof": "Lbzg/T0VD/HIUTRcTcU0/zbtSeT2302RKTc0Vf..."
 }
 ```
 
-The meaning and use of these fields is described in the next section.
+All top-level items not specified above MUST be ignored. If there are duplicate keys at any level, then the last occurrence is the one used in the parsed result.
 
-> [!NOTE]
-> The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
+The meaning and use of these fields is described in the next section.
 
 ## Validating Manifests
 
-Manifests must be parsed and validated subject to the following rules:
+Manifests do not need to be validated in their entirety before they are used for integrity checking. However, if a user-agent finds a violation of any of the below rules during its use of a manifest, it MUST mark it internally as an invalid manifest. This will cause all future integrity checks with respect to this manifest to fail, as described below in the integrity checking algorithm. This mark MUST be retained for as long as the manifest is cached by the user-agent.
 
-* The mandatory keys `hashes` and `transparency_proof` MUST be present.
-* Unrecognized top level keys MUST be ignored.
-* Hash values in `hashes` and `wildcard_hashes` must be valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
-* Each key of `hashes` must be parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative). If parsing fails, the manifest is invalid. The parsed URL MUST have an empty [fragment](https://url.spec.whatwg.org/#concept-url-fragment); if it does, the manifest is invalid. After parsing, the key's canonical form is the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of the parsed URL with the *exclude fragment* flag set. If two keys produce the same canonical form, the manifest is invalid.
+Manifests MUST have the following properties:
+
+* All mandatory keys are present.
+* Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
-
-Manifests which do not follow these rules are invalid and MUST not be used.
 
 # Changes to Network Fetches
 
@@ -220,10 +228,12 @@ The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up th
 The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
 ```
-Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/1.json"
+Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 WAICT v1 always uses SHA-256 for hashing. This allows the user-agent to begin hashing covered resources from the start of a request, even if no manifest is yet available to specify the expected SHA-256 hash. User-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
+
+A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` reponse header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state.
 
 ## Integrity Check
 
@@ -234,7 +244,7 @@ The existing `main fetch` algorithm already handles [SRI integrity checking](htt
 The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read) and the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
-2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
+2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
 5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
