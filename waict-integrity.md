@@ -141,7 +141,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 
 When a site is operating in `enforce` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available. When a site is operating in `report` mode, network fetches for covered resources will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
-The manifest located at a given URL is expected to be immutable and SHOULD have appropriate cache directives set by the server. Sites can notify user-agents that an updated manifest is available by adjusting the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
+The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
 GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest` as described in the next section.
 
