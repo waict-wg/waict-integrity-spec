@@ -180,7 +180,7 @@ The meaning and use of these fields is described in the next section.
 
 ## Validating Manifests
 
-Manifests do not need to be validated in their entirety before they are used for integrity verification logic. However, if a user-agent finds a violation of any of the below rules during its use of a manifest, it MUST halt all current integrity checks with respect to that manifest, and all future integrity checks with respect to that manifest as long as the manifest is cached by the user-agent.
+Manifests do not need to be validated in their entirety before they are used for integrity checking. However, if a user-agent finds a violation of any of the below rules during its use of a manifest, it MUST mark it internally as an invalid manifest. This will cause all future integrity checks with respect to this manifest to fail, as described below in the integrity checking algorithm. This mark MUST be retained for as long as the manifest is cached by the user-agent.
 
 Manifests MUST have the following properties:
 
@@ -231,7 +231,7 @@ The existing `main fetch` algorithm already handles [SRI integrity checking](htt
 The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read) and the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
-2. If the manifest response is not valid JSON, has unexpected types for any field, or is missing required fields (`hashes` or `transparency_proof`), the user-agent MUST treat this as a failure with reason `invalid_manifest`.
+2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
 5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
