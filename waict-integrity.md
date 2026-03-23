@@ -162,7 +162,7 @@ The integrity manifest is a JSON object with the following structure. All fields
 > [!NOTE]
 > The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
 
-An example is given below (with added whitespace for readability):
+An example is given below:
 
 ```json
 {
