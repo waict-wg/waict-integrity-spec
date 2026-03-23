@@ -143,11 +143,11 @@ When a site is operating in `enforce` mode, network fetches for covered resource
 
 The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
 
-GETting a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST result in a response of content type `application/waict-integrity-manifest`. Repsonses with this type contain a _manifest_ line, whose JSON structure is defined in the next section, and an optional _transparency proof_ line. More precisely, the response body is of the form:
+The response content type of a successful GET to a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST be `application/waict-integrity-manifest` (TODO: reserve this MIME type). Repsonses with this type contain a _manifest_ JSON blob whose structure is defined in the next section, and a _transparency proof_ line. More precisely, the response body is of the form:
 ```
-manifest | U+000A [| transparency_proof | U+000A]
+manifest | U+000A | transparency_proof | U+000A
 ```
-where `manifest` is a UTF-8-encoded JSON object with no leading or trailing whitespace and containing no ASCII control characters (those below U+0020), and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. The user-agent MUST reject a response that is invalid UTF-8, contains more than two U+000A codepoints, or contains any other ASCII control character.
+where `|` represents concatenation, `manifest` is a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8,  contains fewer than than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
 
 Servers SHOULD use a suitable compression scheme as negotiated by the user-agent.
 
