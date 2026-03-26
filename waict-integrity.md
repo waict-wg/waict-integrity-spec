@@ -346,6 +346,56 @@ When WAICT is active for the current top-level origin, the user-agent MUST execu
 4. Let `h` be the base64-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
 5. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
+# Inline Content and Dynamic Code Restrictions
+
+WAICT's fetch-based integrity checks cover resources loaded from the network, but several code execution vectors bypass network fetches entirely. [Content Security Policy (CSP3)](https://www.w3.org/TR/CSP3/) addresses many of these vectors through server-sent headers. However, because WAICT's threat model includes an untrusted server, WAICT cannot rely on CSP headers delivered by that server. Instead, when WAICT is active for a top-level origin, the user-agent MUST implicitly enforce the restrictions described in this section, regardless of any CSP headers present.
+
+These restrictions are **additive** to any existing CSP policy. If a site deploys its own CSP, the user-agent enforces both the site's CSP and WAICT's implicit restrictions. A site's CSP can only further constrain behavior, never relax WAICT's restrictions.
+
+## Inline Scripts
+
+When WAICT is active, the user-agent MUST block all inline script execution. This includes:
+
+* Inline `<script>` elements (e.g., `<script>alert(1)</script>`).
+* Inline event handler attributes (e.g., `onclick`, `onload`, `onerror`).
+
+This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-inline'`, but is enforced by the user-agent unconditionally. The user-agent applies this restriction by executing the equivalent of the CSP3 ["Should element's inline type behavior be blocked?"](https://www.w3.org/TR/CSP3/#should-block-inline) algorithm for types `"script"` and `"script attribute"`, always returning **Blocked**.
+
+## Inline Styles
+
+When WAICT is active, the user-agent MUST block all inline style execution. This includes:
+
+* Inline `<style>` elements.
+* Inline `style` attributes on elements.
+
+This corresponds to the behavior of CSP's [`style-src`](https://www.w3.org/TR/CSP3/#directive-style-src) directive without `'unsafe-inline'`. The user-agent applies this restriction by executing the equivalent of the CSP3 "Should element's inline type behavior be blocked?" algorithm for types `"style"` and `"style attribute"`, always returning **Blocked**.
+
+## Dynamic Code Execution
+
+When WAICT is active, the user-agent MUST block all dynamic code compilation from strings. This includes:
+
+* `eval(string)`
+* `new Function(string)`
+* `setTimeout(string, ...)` and `setInterval(string, ...)` when called with a string argument.
+* Any other API that compiles a string as script, including `Function.prototype.constructor` invoked with a string body.
+
+This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-eval'`. The user-agent applies this restriction within the [`EnsureCSPDoesNotBlockStringCompilation`](https://www.w3.org/TR/CSP3/#can-compile-strings) integration point, unconditionally blocking string-to-code compilation when WAICT is active.
+
+Dynamically-generated code cannot be integrity-checked against the manifest because its content is not known at build time.
+
+## `javascript:` URIs
+
+When WAICT is active, the user-agent MUST block navigation to `javascript:` URIs. Navigation to a `javascript:` URI evaluates arbitrary script in the context of the navigated document, bypassing WAICT's fetch integrity checks. The user-agent applies this restriction as part of the [navigate](https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate) algorithm, blocking the URI before evaluation.
+
+## Failure Handling
+
+Violations of the restrictions in this section are handled according to the WAICT mode:
+
+* In `enforce` mode, the user-agent MUST prevent the violating behavior (block the script, style, eval, navigation, or base URL change) and MUST report the failure as described in [Reporting](#reporting) with the reason `inline_violation`.
+* In `report` mode, the user-agent MUST report the violation as described in [Reporting](#reporting) with the reason `inline_violation`, but MUST NOT block the behavior.
+
+The `inline_violation` reason is added to the set of failure reasons described in [Reporting](#reporting).
+
 # Non-Normative Appendices
 
 ## Server Operator Advice
