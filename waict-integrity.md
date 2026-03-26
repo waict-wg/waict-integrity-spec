@@ -390,6 +390,21 @@ Dynamically-generated code cannot be integrity-checked against the manifest beca
 
 When WAICT is active, the user-agent MUST block navigation to `javascript:` URIs. Navigation to a `javascript:` URI evaluates arbitrary script in the context of the navigated document, bypassing WAICT's fetch integrity checks. The user-agent applies this restriction as part of the [navigate](https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate) algorithm, blocking the URI before evaluation.
 
+## `data:` URIs
+
+When WAICT is active, the user-agent MUST block the use of `data:` URIs as the source for active content. A `data:` URI embeds content inline in the URL itself, bypassing network fetches and therefore WAICT's fetch-based integrity checks. This includes but is not limited to:
+
+* `<script src="data:...">` — executes script from a data URI.
+* `<iframe src="data:text/html,...">` — loads an entire document from a data URI.
+
+The user-agent MUST block any fetch with a `data:` URL scheme when the request's [destination](https://fetch.spec.whatwg.org/#concept-request-destination) is an active content type as defined in [Determine Coverage](#determine-coverage).
+
+## `blob:` URIs and `srcdoc` iframes
+
+When WAICT is active, the user-agent MUST block the use of `blob:` URIs as the source for active content. Like `data:` URIs, `blob:` URIs reference content that was constructed locally and do not trigger network fetches, bypassing WAICT's integrity checks. The user-agent MUST block any fetch with a `blob:` URL scheme when the request's [destination](https://fetch.spec.whatwg.org/#concept-request-destination) is an active content type as defined in [Determine Coverage](#determine-coverage).
+
+Additionally, the user-agent MUST block the use of the [`srcdoc`](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-srcdoc) attribute on `<iframe>` elements when WAICT is active. The `srcdoc` attribute embeds an entire HTML document inline in the attribute value, which can contain arbitrary scripts and styles that would not be subject to WAICT integrity checks.
+
 ## Failure Handling
 
 Violations of the restrictions in this section are handled according to the WAICT mode:
