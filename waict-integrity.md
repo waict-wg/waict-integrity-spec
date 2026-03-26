@@ -45,7 +45,6 @@ The header is a structured response header (Dictionary type per [RFC 9651](https
 * `max-age` - An `sf-integer` that MUST be `>= 0`. How long (in seconds) user-agents MUST enforce WAICT after seeing this header (downgrade protection).
 * `mode` - An `sf-token` containing either `enforce` or `report`. In `enforce` mode, subresources that fail integrity checks are blocked from loading. In `report` mode, failures are reported but resources are still loaded.
 * `manifest` - An `sf-string` containing a URL where the user-agent can fetch the WAICT manifest. The URL MAY be relative, in which case it is resolved against the origin's base URL.
-* `blocked-destinations` - An `sf-inner-list` of one or more `sf-tokens` indicating the destination types (e.g., `script`, `style`) to which integrity checks apply. Values are drawn from the [`destination`](https://fetch.spec.whatwg.org/#destination-type) type as defined in the Fetch spec. Unrecognized tokens MUST be ignored.
 
 If one or more of the mandatory keys is missing or invalid, the entire header MUST be ignored.
 The following key-value pairs are optional:
@@ -60,7 +59,7 @@ The data located at the `manifest` URL in MUST be immutable, i.e., the unencoded
 An example header is given below:
 
 ```
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, blocked-destinations=(script style), preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
 Websites using WAICT SHOULD set this response header on all of their same-origin responses.
@@ -89,11 +88,10 @@ User-agents MUST store WAICT state for a top-level origin in order to prevent do
 
 * The list of reporting endpoints
 * The manifest url
-* For each supported entry in `blocked-destinations`:
-  * The mode (`enforce` or `report`)
-  * The effective expiry time (`max-age` seconds from when the header was last seen)
+* The mode (`enforce` or `report`)
+* The effective expiry time (`max-age` seconds from when the header was last seen)
 
-The user-agent MUST clear the state for `blocked-destinations` when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the information described above. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
+The user-agent MUST clear the state when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the information described above. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
 
 ### Upgrades and Downgrades
 
@@ -103,19 +101,15 @@ User-agents MUST follow this algorithm when updating their WAICT state:
 
 1. Overwrite the list of reporting endpoints with the latest contents of `endpoints`.
 2. Overwrite the manifest url with the latest `manifest` entry.
-3. For each supported entry in `blocked-destinations`,
-   1. If there is no existing record, store the new record.
-   2. Otherwise, if there is an existing record, compare the existing and new record:
-      1. If the new record is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
-      2. If the new record has the same mode as the existing record and the new effective expiry time is further in the future, update the effective expiry time.
-      3. Otherwise, ignore the new record.
+3. If there is no existing mode, store the new mode.
+4. Otherwise, if there is an existing mode, compare the existing and new mode:
+   1. If the new mode is `enforce` and the previous record was `report`, update the entry with the new mode and effective expiry, or
+   2. If the new mode has the same mode as the existing mode and the new effective expiry time is further in the future, update the effective expiry time.
+   3. Otherwise, ignore the new record.
 
 Any record which has reached its effective expiry time MUST be ignored and SHOULD be removed.
 
 This algorithm ensures that sites can upgrade their WAICT coverage immediately. However, a site can only downgrade their WAICT coverage after `max-age` seconds pass since they last served a header enforcing coverage for that destination type.
-
-> [!NOTE]
-> These rules are awkward if a site wants to expand its coverage of resources (e.g. add a new resource type), so would like to enable report-only for the newly covered resources but maintain enforce for the existing resources. Three possible solutions: a) Ignore this issue. b) Use two separate lists for report / enforced destinations. c) Use two separate headers for reporting / enforcement. Currently tilting towards option b) after discussion.
 
 ### Preloading
 
@@ -204,9 +198,32 @@ WAICT integrity checks apply to the unencoded response bytes delivered to the do
 
 ## Determine Coverage
 
-Before [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) is invoked, the user-agent determines whether the request is covered by the WAICT policy by checking the [request](https://fetch.spec.whatwg.org/#concept-request)'s [`destination`](https://fetch.spec.whatwg.org/#concept-request-destination) against the stored `blocked-destinations` list for the top-level origin. This information is conveyed in the `Integrity-Policy-WAICT-v1` response header and is always available to the user-agent, even if the manifest has not yet been loaded.
+Before [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) is invoked, the user-agent determines whether the request is covered by the WAICT policy by checking the [request](https://fetch.spec.whatwg.org/#concept-request)'s [`destination`](https://fetch.spec.whatwg.org/#concept-request-destination).
 
-If the destination does not appear in the `blocked-destinations` list, the fetch proceeds without WAICT processing.
+The following destination types are covered by WAICT as **active content**:
+
+ * document
+ * frame
+ * iframe
+ * audioworklet
+ * paintworklet
+ * script
+ * serviceworker
+ * sharedworker
+ * worker
+ * style
+ * xslt
+
+The following destination types are covered by WAICT as **passive content**:
+
+* object
+* audio
+* font
+* image
+* json
+* video
+
+If the destination does not appear in the above lists, the fetch proceeds without WAICT processing.
 Otherwise, the fetch is subject to the integrity checks described below.
 
 ### Interaction with SRI and Integrity Policy
@@ -218,7 +235,9 @@ Otherwise, the fetch is subject to the integrity checks described below.
 
 ## Request Setup
 
-The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up the request (populating headers, priority, and other properties) before invoking [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch). For a covered request, WAICT adds the following steps during this request setup phase.
+The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up the request (populating headers, priority, and other properties) before invoking [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch).
+
+For a request to a covered destination type, WAICT adds the following steps during this request setup phase.
 
 The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
@@ -243,12 +262,13 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
 5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
-6. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
-7. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
-8. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
+6. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
+7. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
+8. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
+9. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
-    1. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
-1. Fail with reason `missing_from_manifest`.
+    2. For each component `b_i` of `bb`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
+10. Fail with reason `missing_from_manifest`.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
 
