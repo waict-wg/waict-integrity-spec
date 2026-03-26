@@ -193,8 +193,9 @@ Manifests MUST have the following properties:
 * All mandatory keys are present.
 * Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
 * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
+* If a proof of transparency was included with the manifest, or the manifest was linked to by a WAICT integrity policy header with nonzero `max-age` that is still in effect, then the transparency proof is successfully parsed and checked using the algorithm in TODO
 
-The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
+The last property above allows servers to effectively disable WAICT transparency by setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof.
 
 # Changes to Network Fetches
 
@@ -272,11 +273,11 @@ In both `report` and `enforce` modes, the user-agent MUST:
 
 The `waict-violation` report `body` includes the keys and values from [IntegrityViolationReportBody](https://developer.mozilla.org/en-US/docs/Web/API/IntegrityViolationReportBody), enriched with an entry `reason` indicating the cause of the failure:
 
-* `manifest_unavailable` - The manifest for the origin could not be loaded.
-* `invalid_manifest` - The manifest was loaded, but was malformed, had unexpected types, or was missing required fields (including `transparency_proof`).
-* `invalid_transparency_proof` - A manifest and transparency proof were provided, but the proof could not be parsed.
-* `missing_from_manifest` - A valid manifest was available, but this resource was not covered.
-* `no_manifest_match` - A valid manifest was available and described this resource, but the resource did not match the manifest entry.
+* `manifest_unavailable` — The manifest for the origin could not be loaded.
+* `invalid_manifest` — The manifest was loaded, but was malformed, had unexpected types, or was missing required fields (including `transparency_proof`).
+* `invalid_transparency_proof` — A manifest and transparency proof were provided, but the proof could not be parsed.
+* `missing_from_manifest` — A valid manifest was available, but this resource was not covered.
+* `no_manifest_match` — A valid manifest was available and described this resource, but the resource did not match the manifest entry.
 
 ### Report Mode
 
