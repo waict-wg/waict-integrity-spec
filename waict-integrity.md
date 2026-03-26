@@ -150,6 +150,7 @@ Servers SHOULD use a suitable compression scheme as negotiated by the user-agent
 The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
 * `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
+* `wasm_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded) of permitted WebAssembly module bytes. The sorted order enables efficient membership testing by user-agents. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
 * `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
 
@@ -165,6 +166,10 @@ An example is given below:
     "https://my-fave-cdn.example/assets/css/main.css": "zet5ebcBGt1+fr6F0vJbpOv7p4tV/fIbFH4AafxtBl0=",
     "/favicon.ico": "zbt5ebcBGt1+gr6F0vJbpOv7p4tV/fIbFH4AafxtBl0="
   },
+  "wasm_hashes": [
+    "Aq3rP9FkR8vLHnUGT5OgP7xmNyvDh2YcfJLmzgSEz7o=",
+    "kJ2E9N8C3vR5xP7yQwL4mFbA6dH0jT2uK9sG1nO3iVc="
+  ],
   "wildcard_hashes": [
     "mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
     "H9OJUrESfT3SUlRpqAiDFEvqnnG2Sp9/eloyVMqxnnb=",
@@ -185,7 +190,7 @@ Manifests do not need to be validated in their entirety before they are used for
 Manifests MUST have the following properties:
 
 * All mandatory keys are present.
-* Values in `hashes` and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
 * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
 The cryptographic proof of transparency conveyed in `transparency_proof` must be validated according to the TODO specification.
@@ -309,7 +314,37 @@ Compliant user-agents SHALL NOT display error messages to end-users who have not
 In `enforce` mode, the behavior depends on the failure type:
 
 * `manifest_unavailable`, `invalid_manifest`, `invalid_transparency_proof` - the user-agent MUST display a warning page to the user indicating the error. The user-agent SHOULD NOT allow the user to bypass the warning.
-* `missing_from_manifest`, `no_manifest_match` -The user-agent MUST return an appropriate [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
+* `missing_from_manifest`, `no_manifest_match` - The user-agent MUST return an appropriate [network error](https://fetch.spec.whatwg.org/#concept-network-error) for the fetch.
+
+# Changes to WebAssembly Processing
+
+[CSP3](https://www.w3.org/TR/CSP3/#wasm-integration) gates WebAssembly compilation as a binary allow/block decision via the `'wasm-unsafe-eval'` source expression. WAICT extends this model to provide per-module integrity checking: rather than allowing or blocking all WebAssembly, user-agents verify that the bytes of each WebAssembly module match an entry in the manifest's `wasm_hashes` before permitting compilation.
+
+## Covered APIs
+
+WebAssembly modules can be compiled and instantiated through several APIs:
+
+* `new WebAssembly.Module(bytes)` — synchronous compilation from an `ArrayBuffer` or `TypedArray`.
+* `WebAssembly.compile(bytes)` — asynchronous compilation from an `ArrayBuffer` or `TypedArray`.
+* `WebAssembly.compileStreaming(source)` — asynchronous compilation from a fetch `Response`.
+* `WebAssembly.instantiate(bytes, imports)` — asynchronous compilation and instantiation from an `ArrayBuffer` or `TypedArray`.
+* `WebAssembly.instantiateStreaming(source, imports)` — asynchronous compilation and instantiation from a fetch `Response`.
+
+WAICT integrity checking applies to all of these paths. The check is performed on the raw WebAssembly module bytes regardless of how they were obtained.
+
+For the streaming APIs (`compileStreaming`, `instantiateStreaming`), the underlying fetch is also subject to the normal WAICT fetch integrity checks described in [Changes to Network Fetches](#changes-to-network-fetches), since `.wasm` resources fetched by URL are active content (destination `script`). The WebAssembly-level hash check described in this section is an additional gate applied at compilation time.
+
+## Integration with HostEnsureCanCompileWasmBytes
+
+WebAssembly defines the [`HostEnsureCanCompileWasmBytes()`](https://webassembly.github.io/content-security-policy/js-api/#host-ensure-can-compile-wasm-bytes) abstract operation, which allows the host environment to block compilation of WebAssembly source bytes. CSP3 [implements this hook](https://www.w3.org/TR/CSP3/#can-compile-wasm-bytes) to enforce its `script-src` directive. WAICT adds an additional check within this hook.
+
+When WAICT is active for the current top-level origin, the user-agent MUST execute the following steps within `HostEnsureCanCompileWasmBytes(bytes)`:
+
+1. If no WAICT state is stored for this top-level origin, return normally (compilation is not blocked by WAICT).
+2. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
+3. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
+4. Let `h` be the base64-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
+5. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
 # Non-Normative Appendices
 
