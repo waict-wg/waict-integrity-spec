@@ -228,6 +228,9 @@ The following destination types are covered by WAICT as **passive content**:
 * json
 * video
 
+> [!NOTE]
+> TODO: The `<base>` element can change the base URL used to resolve relative URLs in a document. A malicious server could inject a `<base href="https://evil.example/">` element to redirect passive content loads to attacker-controlled URLs. Since passive content whose URL is not listed in `hashes` passes the integrity check unconditionally, this could be used to serve arbitrary passive resources. Consider restricting or ignoring the `<base>` element when WAICT is active.
+
 If the destination does not appear in the above lists, the fetch proceeds without WAICT processing.
 Otherwise, the fetch is subject to the integrity checks described below.
 
