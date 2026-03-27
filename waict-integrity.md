@@ -263,7 +263,7 @@ After [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) dispatch
 
 The existing `main fetch` algorithm already handles [SRI integrity checking](https://w3c.github.io/webappsec-subresource-integrity/#does-response-match-metadatalist) when a request's [integrity metadata](https://fetch.spec.whatwg.org/#concept-request-integrity-metadata) is nonempty: the response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), checked against the metadata, and only then passed to `fetch response handover`. WAICT extends this step to also cover the case where integrity metadata comes from a manifest rather than an inline attribute.
 
-The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read) and the user-agent proceeds as follows:
+The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), the user-agent hashes the content, and checks if it is in the manifest. For active content, the fetched URL is required to have an entry in the manifest. For passive content, the fetched URL may not appear in the manifest in which case, integrity checking is skipped. More precisely, to perform integrity checking on the fetch, the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
