@@ -366,23 +366,27 @@ This includes:
 
 ## Inline Styles
 
-When WAICT is active, the user-agent MUST block all inline style execution. This includes:
+When WAICT is active, the user-agent MUST block all inline style execution.
+
+This corresponds to the behavior of CSP's [`style-src`](https://www.w3.org/TR/CSP3/#directive-style-src) directive without `'unsafe-inline'`. The user-agent applies this restriction by executing the equivalent of the CSP3 "Should element's inline type behavior be blocked?" algorithm for types `"style"` and `"style attribute"`, always returning **Blocked**.
+
+This includes:
 
 * Inline `<style>` elements.
 * Inline `style` attributes on elements.
 
-This corresponds to the behavior of CSP's [`style-src`](https://www.w3.org/TR/CSP3/#directive-style-src) directive without `'unsafe-inline'`. The user-agent applies this restriction by executing the equivalent of the CSP3 "Should element's inline type behavior be blocked?" algorithm for types `"style"` and `"style attribute"`, always returning **Blocked**.
-
 ## Dynamic Code Execution
 
-When WAICT is active, the user-agent MUST block all dynamic code compilation from strings. This includes:
+When WAICT is active, the user-agent MUST block all dynamic code compilation from strings.
+
+This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-eval'`. The user-agent applies this restriction within the [`EnsureCSPDoesNotBlockStringCompilation`](https://www.w3.org/TR/CSP3/#can-compile-strings) integration point, unconditionally blocking string-to-code compilation when WAICT is active.
+
+This includes:
 
 * `eval(string)`
 * `new Function(string)`
 * `setTimeout(string, ...)` and `setInterval(string, ...)` when called with a string argument.
 * Any other API that compiles a string as script, including `Function.prototype.constructor` invoked with a string body.
-
-This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-eval'`. The user-agent applies this restriction within the [`EnsureCSPDoesNotBlockStringCompilation`](https://www.w3.org/TR/CSP3/#can-compile-strings) integration point, unconditionally blocking string-to-code compilation when WAICT is active.
 
 Dynamically-generated code cannot be integrity-checked against the manifest because its content is not known at build time.
 
