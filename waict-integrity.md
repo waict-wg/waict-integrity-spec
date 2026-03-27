@@ -218,6 +218,9 @@ The following destination types are covered by WAICT as **active content**:
  * style
  * xslt
 
+> [!NOTE]
+> Should we treat html as passive content to enable server-generated HTML to coexist with web apps on the same domain?
+
 The following destination types are covered by WAICT as **passive content**:
 
 * object
@@ -332,8 +335,6 @@ WebAssembly modules can be compiled and instantiated through several APIs:
 
 WAICT integrity checking applies to all of these paths. The check is performed on the raw WebAssembly module bytes regardless of how they were obtained.
 
-For the streaming APIs (`compileStreaming`, `instantiateStreaming`), the underlying fetch is also subject to the normal WAICT fetch integrity checks described in [Changes to Network Fetches](#changes-to-network-fetches), since `.wasm` resources fetched by URL are active content (destination `script`). The WebAssembly-level hash check described in this section is an additional gate applied at compilation time.
-
 ## Integration with HostEnsureCanCompileWasmBytes
 
 WebAssembly defines the [`HostEnsureCanCompileWasmBytes()`](https://webassembly.github.io/content-security-policy/js-api/#host-ensure-can-compile-wasm-bytes) abstract operation, which allows the host environment to block compilation of WebAssembly source bytes. CSP3 [implements this hook](https://www.w3.org/TR/CSP3/#can-compile-wasm-bytes) to enforce its `script-src` directive. WAICT adds an additional check within this hook.
@@ -354,12 +355,14 @@ These restrictions are **additive** to any existing CSP policy. If a site deploy
 
 ## Inline Scripts
 
-When WAICT is active, the user-agent MUST block all inline script execution. This includes:
+When WAICT is active, the user-agent MUST block all inline script execution.
+
+This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-inline'`, but is enforced by the user-agent unconditionally. The user-agent applies this restriction by executing the equivalent of the CSP3 ["Should element's inline type behavior be blocked?"](https://www.w3.org/TR/CSP3/#should-block-inline) algorithm for types `"script"` and `"script attribute"`, always returning **Blocked**.
+
+This includes:
 
 * Inline `<script>` elements (e.g., `<script>alert(1)</script>`).
 * Inline event handler attributes (e.g., `onclick`, `onload`, `onerror`).
-
-This corresponds to the behavior of CSP's [`script-src`](https://www.w3.org/TR/CSP3/#directive-script-src) directive without `'unsafe-inline'`, but is enforced by the user-agent unconditionally. The user-agent applies this restriction by executing the equivalent of the CSP3 ["Should element's inline type behavior be blocked?"](https://www.w3.org/TR/CSP3/#should-block-inline) algorithm for types `"script"` and `"script attribute"`, always returning **Blocked**.
 
 ## Inline Styles
 
@@ -385,7 +388,11 @@ Dynamically-generated code cannot be integrity-checked against the manifest beca
 
 ## `javascript:` URIs
 
-When WAICT is active, the user-agent MUST block navigation to `javascript:` URIs. Navigation to a `javascript:` URI evaluates arbitrary script in the context of the navigated document, bypassing WAICT's fetch integrity checks. The user-agent applies this restriction as part of the [navigate](https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate) algorithm, blocking the URI before evaluation.
+When WAICT is active, the user-agent MUST block navigation to `javascript:` URIs unless the [userInvolvement](https://html.spec.whatwg.org/multipage/browsing-the-web.html#beginning-navigation) is "Browser UI".
+
+Navigation to a `javascript:` URI evaluates arbitrary script in the context of the navigated document, bypassing WAICT's fetch integrity checks. The user-agent applies this restriction as part of the [navigate](https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate) algorithm, blocking the URI before evaluation.
+
+Allowing navigation via the browser UI ensures that Javascript Bookmarks remain functional whilst blocking navigation triggered by interacting with the page directly.
 
 ## `data:` URIs
 
