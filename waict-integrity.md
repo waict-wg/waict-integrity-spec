@@ -472,3 +472,9 @@ User-agents only gain a security benefit from the use of `enforce` mode. User-ag
 WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin hashing integrity-checked resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
 
 A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` response header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state.
+
+## Browser UX Integration
+
+Browsers should not expose WAICT state to end users unless an irrecovable error arises. However, web developers should be able to access WAICT information to aid debugging their implementations.
+
+Thought should be given to annotating network fetches in DevTools with their WAICT state and result, providing access to the browser's retained WAICT state for an origin and the current manifest, and exposing suitable information to the console.
