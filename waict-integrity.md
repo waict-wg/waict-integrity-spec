@@ -153,6 +153,9 @@ The integrity manifest is a JSON object with the following structure. All fields
 * `wasm_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad) of permitted WebAssembly module bytes. The sorted order enables efficient membership testing by user-agents. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
 * `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad-encoded). The sorted order enables efficient membership testing by user-agents.
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
+* `emergency_opt_out` (optional) — a boolean used when the origin needs to disable WAICT immediately. Default is `false`
+
+When a manifest has `emergency_opt_out = true`, we say it is a **tombstone**, since it is used to indicate that the origin has unenrolled from WAICT. No integrity checking happens when a tombstone manifest is active. For consistency, it is required that even tombstone manifests contain the mandatory fields.
 
 > [!NOTE]
 > The `wildcard_hashes` and `resource_delimiter` fields may be removed if we can find a suitable alternative, e.g. using service workers to unbundle JS resources.
@@ -189,16 +192,13 @@ Manifests do not need to be validated in their entirety before they are used for
 
 Manifests MUST have the following properties:
 
-* All mandatory keys are present.
-* Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64urlnopad ([RFC 4648 Section 5](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
-* Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 * If the manifest was linked to by a WAICT integrity policy header with nonzero `max-age` that is still in effect, then the transparency proof is successfully parsed and checked using the algorithm in TODO
+* All mandatory keys are present.
 * If the manifest is non-tombstone:
-  * All mandatory keys are present.
-  * Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64urlnopad ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+  * Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64urlnopad ([RFC   4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32   bytes.
   * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
-The first property above allows origins to effectively disable WAICT transparency by setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof. The tombstone conditional allows origins to opt out of WAICT integrity by publicly committing to a tombstone manifest.
+The first property above allows origins to keep WAICT transparency disabled by always setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof. Note the non-tombstone conditional means that manifests MUST be treated as tombstones even when the entries in all the fields are invalid.
 
 # Changes to Network Fetches
 
@@ -273,7 +273,7 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 1. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
-1. If the manifest is a tombstone, return success (no integrity checking when the manifest is a tombstone).
+1. If the manifest is a tombstone, delete all WAICT state pertaining to this origin (including preloaded state) and return success
 1. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 1. Let `b` be the bytes of the response body and `h` be the base64urlnopad-encoded SHA-256 hash of `b`.
 1. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
@@ -351,7 +351,7 @@ When WAICT is active for the current top-level origin, the user-agent MUST execu
 1. If no WAICT state is stored for this top-level origin, return normally (compilation is not blocked by WAICT).
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
 1. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
-1. If the manifest is a tombstone, return success (no integrity checking when the manifest is a tombstone).
+1. If the manifest is a tombstone, delete all WAICT state pertaining to this origin (including preloaded state) and return success
 1. Let `h` be the base64nopad-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
 1. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
