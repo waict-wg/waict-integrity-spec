@@ -62,7 +62,7 @@ An example header is given below:
 Integrity-Policy-WAICT-v1: max-age=90, mode=report, preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
 ```
 
-Websites using WAICT SHOULD set a WAICT response header on all of their same-origin responses.
+Websites using WAICT MUST set a WAICT response header on top-level navigation responses. Websites MAY additionally set the header on subresource responses as a defence in depth measure against user-agents with stale manifests (see [Manifest Override on Subresource Responses](#manifest-override-on-subresource-responses)).
 
 ## User-Agent Processing of Response Header
 
@@ -280,6 +280,14 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 10. Fail with reason `missing_from_manifest`.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
+
+### Manifest Override on Subresource Responses
+
+When a user-agent receives a response to a covered subresource request, the response MAY include an `Integrity-Policy-WAICT-v1` header. If this header is present and contains a `manifest` URL that differs from the manifest URL currently stored for the top-level origin, the user-agent MUST fetch the manifest at the new URL and use it when performing the integrity check for that subresource. The user-agent MUST also update its stored WAICT state for the top-level origin following the algorithm in [Upgrades and Downgrades](#upgrades-and-downgrades).
+
+This mechanism provides a defence in depth against stale manifests. If a user-agent has cached a manifest from a previous page load, a server can correct this by serving an updated `Integrity-Policy-WAICT-v1` header on any subresource response. The user-agent will then fetch the updated manifest and use it for the integrity check rather than relying on the stale manifest, which may not contain entries for newly deployed resources.
+
+Servers are not required to serve the WAICT header on subresource responses. However, doing so ensures that user-agents with outdated manifests can gracefully recover.
 
 ### Speculative Processing
 
