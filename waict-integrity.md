@@ -14,7 +14,7 @@ This document uses Structured Field Values for HTTP ([RFC 9651](https://www.rfc-
 
 In this document, `origin` refers to the tuple (scheme, host, port) as defined in [RFC 6454](https://www.rfc-editor.org/rfc/rfc6454).
 
-Where this document refers to base64 encoding, it means the standard alphabet defined in [RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4) (using `+` and `/` with `=` padding).
+Where this document refers to base64 encoding, it means the standard alphabet defined in [RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4) (using `+` and `/` with `=` padding). Where this document refers to base64urlnopad encoding, it means the URL-safe alphabet defined in [RFC 4648 Section 5](https://www.rfc-editor.org/rfc/rfc4648#section-5) (using `-` and `_`), with padding (`=`) omitted.
 
 > [!NOTE]
 > Editorial comments are indicated by the use of notes like these. These will be removed in the future.
@@ -54,7 +54,7 @@ The following key-value pairs are optional:
 
 Any other keys MUST be ignored. Servers MAY set additional keys prefixed `GREASE-` which user-agents MUST ignore.
 
-The data located at the `manifest` URL MUST be immutable, i.e., the unencoded response body of a successful GET request to that URL MUST never change. To achieve this, implementers SHOULD include a SHA-256 hash of the unencoded response body in the URL itself, encoded in base64url, and truncated to 22 characters (corresponding to 128 bits of the hash).
+The data located at the `manifest` URL MUST be immutable, i.e., the unencoded response body of a successful GET request to that URL MUST never change. To achieve this, implementers SHOULD include a SHA-256 hash of the unencoded response body in the URL itself, encoded in base64url, and truncated to 22 characters (equivalent to base64urlnopad truncated to 22 characters; this encodes 128 bits).
 
 An example header is given below:
 
@@ -148,9 +148,9 @@ Servers SHOULD use a suitable compression scheme as negotiated by the user-agent
 
 The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
-* `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64-encoded.
-* `wasm_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded) of permitted WebAssembly module bytes. The sorted order enables efficient membership testing by user-agents. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
-* `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64-encoded). The sorted order enables efficient membership testing by user-agents.
+* `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64urlnopad-encoded.
+* `wasm_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad) of permitted WebAssembly module bytes. The sorted order enables efficient membership testing by user-agents. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
+* `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad-encoded). The sorted order enables efficient membership testing by user-agents.
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
 
 > [!NOTE]
@@ -189,7 +189,7 @@ Manifests do not need to be validated in their entirety before they are used for
 Manifests MUST have the following properties:
 
 * All mandatory keys are present.
-* Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+* Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64urlnopad ([RFC 4648 Section 5](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
 * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 * If the manifest was linked to by a WAICT integrity policy header with nonzero `max-age` that is still in effect, then the transparency proof is successfully parsed and checked using the algorithm in TODO
 
@@ -269,14 +269,14 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
 3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
-4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
+4. Let `b` be the bytes of the response body and `h` be the base64urlnopad-encoded SHA-256 hash of `b`.
 5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
 6. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
 7. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
 8. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
 9. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
-    2. For each component `b_i` of `b`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
+    2. For each component `b_i` of `b`, compute `SHA-256(b_i)`, base64urlnopad-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
 10. Fail with reason `missing_from_manifest`.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
@@ -345,7 +345,7 @@ When WAICT is active for the current top-level origin, the user-agent MUST execu
 1. If no WAICT state is stored for this top-level origin, return normally (compilation is not blocked by WAICT).
 2. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
 3. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
-4. Let `h` be the base64-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
+4. Let `h` be the base64urlnopad-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
 5. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
 # Inline Content and Dynamic Code Restrictions
