@@ -59,7 +59,7 @@ The data located at the `manifest` URL MUST be immutable, i.e., the unencoded re
 An example header is given below:
 
 ```HTTP
-Integrity-Policy-WAICT-v1: max-age=90, mode=report, preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
+Integrity-Policy-WAICT-v1: max-age=90, mode=report, preload=?0, endpoints=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA"
 ```
 
 Websites using WAICT SHOULD set a WAICT response header on all of their same-origin responses.
@@ -140,7 +140,9 @@ The response content type of a successful GET to a URL referenced in the `manife
 ```
 manifest | U+000A | transparency_proof | U+000A
 ```
-where `|` represents concatenation, `manifest` is a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8, contains fewer than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
+where `|` represents concatenation, `manifest` is the empty string or a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8, contains fewer than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
+
+When `manifest` is the empty string, we say it is a **tombstone**, since it is used to indicate that the origin has unenrolled from WAICT. No integrity checking happens when a tombstone manifest is active.
 
 Servers SHOULD use a suitable compression scheme as negotiated by the user-agent.
 
@@ -188,12 +190,13 @@ Manifests do not need to be validated in their entirety before they are used for
 
 Manifests MUST have the following properties:
 
-* All mandatory keys are present.
-* Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
-* Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 * If the manifest was linked to by a WAICT integrity policy header with nonzero `max-age` that is still in effect, then the transparency proof is successfully parsed and checked using the algorithm in TODO
+* If the manifest is non-tombstone:
+  * All mandatory keys are present.
+  * Values in `hashes`, `wasm_hashes`, and `wildcard_hashes` are valid base64 ([RFC 4648 Section 4](https://www.rfc-editor.org/rfc/rfc4648#section-4)) and decode to exactly 32 bytes.
+  * Each key `s` of `hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
-The last property above allows servers to effectively disable WAICT transparency by setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof.
+The first property above allows origins to effectively disable WAICT transparency by setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof. The tombstone conditional allows origins to opt out of WAICT integrity by committing to a tombstone manifest.
 
 # Changes to Network Fetches
 
@@ -253,7 +256,7 @@ For a request to a covered destination type, WAICT adds the following steps duri
 The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
 ```
-Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA.json"
+Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA"
 ```
 
 WAICT v1 always uses SHA-256 for hashing. This allows the user-agent to begin hashing covered resources from the start of a request, even if no manifest is yet available to specify the expected SHA-256 hash. User-agents SHOULD compute the SHA-256 hash incrementally as response body chunks arrive, consistent with existing [SRI](https://www.w3.org/TR/sri-2/) behavior.
@@ -264,20 +267,21 @@ After [`main fetch`](https://fetch.spec.whatwg.org/#concept-main-fetch) dispatch
 
 The existing `main fetch` algorithm already handles [SRI integrity checking](https://w3c.github.io/webappsec-subresource-integrity/#does-response-match-metadatalist) when a request's [integrity metadata](https://fetch.spec.whatwg.org/#concept-request-integrity-metadata) is nonempty: the response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), checked against the metadata, and only then passed to `fetch response handover`. WAICT extends this step to also cover the case where integrity metadata comes from a manifest rather than an inline attribute.
 
-The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), the user-agent hashes the content, and checks if it is in the manifest. For active content, the fetched URL is required to have an entry in the manifest. For passive content, the fetched URL may not appear in the manifest in which case, integrity checking is skipped. More precisely, to perform integrity checking on the fetch, the user-agent proceeds as follows:
+The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read), the user-agent hashes the content, and checks if it is in the manifest. For active content, the fetched URL is required to have an entry in the manifest. For passive content, the fetched URL may not appear in the manifest, in which case integrity checking is skipped. More precisely, to perform integrity checking on the fetch, the user-agent proceeds as follows:
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
-2. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
-3. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
-4. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
-5. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
-6. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
-7. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
-8. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
-9. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
+1. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
+1. If the manifest is a tombstone, return success (no integrity checking when the manifest is a tombstone).
+1. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
+1. Let `b` be the bytes of the response body and `h` be the base64-encoded SHA-256 hash of `b`.
+1. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
+1. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
+1. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
+1. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
+1. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
     1. Let `d` be `resource_delimiter`.
-    2. For each component `b_i` of `b`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
-10. Fail with reason `missing_from_manifest`.
+    1. For each component `b_i` of `b`, compute `SHA-256(b_i)`, base64-encode it, and check whether the result is a member of `wildcardHashes`. If all components match, return success. Otherwise, fail with reason `no_manifest_match`.
+1. Fail with reason `missing_from_manifest`.
 
 If the integrity check succeeds, `main fetch` proceeds to [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale) with the verified response. If it fails, the behavior depends on the WAICT mode as described in [Handling Failures](#handling-failures).
 
@@ -343,10 +347,11 @@ WebAssembly defines the [`HostEnsureCanCompileWasmBytes()`](https://webassembly.
 When WAICT is active for the current top-level origin, the user-agent MUST execute the following steps within `HostEnsureCanCompileWasmBytes(bytes)`:
 
 1. If no WAICT state is stored for this top-level origin, return normally (compilation is not blocked by WAICT).
-2. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
-3. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
-4. Let `h` be the base64-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
-5. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
+1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
+1. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
+1. If the manifest is a tombstone, return success (no integrity checking when the manifest is a tombstone).
+1. Let `h` be the base64-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
+1. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
 # Inline Content and Dynamic Code Restrictions
 
