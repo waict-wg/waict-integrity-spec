@@ -140,7 +140,7 @@ The response content type of a successful GET to a URL referenced in the `manife
 ```
 manifest | U+000A | transparency_proof | U+000A
 ```
-where `|` represents concatenation, `manifest` is the empty string or a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8, contains fewer than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
+where `|` represents concatenation, `manifest` a UTF-8-encoded JSON object, and `transparency_proof` is a base64 encoding of the `WaictInclusionProof` specified in TODO, proving inclusion of `manifest` in a tree. Note the parsing of a response is unique, since `transparency_proof` cannot have a newline in it. The user-agent MUST reject a response that is invalid UTF-8, contains fewer than two U+000A codepoints, contains a `manifest` that is not valid JSON, or contains a `transparency_proof`.
 
 When `manifest` is the empty string, we say it is a **tombstone**, since it is used to indicate that the origin has unenrolled from WAICT. No integrity checking happens when a tombstone manifest is active.
 
