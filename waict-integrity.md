@@ -223,13 +223,13 @@ The following destination types are covered by WAICT as **active content**:
  * worker
  * style
  * xslt
+ * object
 
 > [!NOTE]
 > Should we treat html as passive content to enable server-generated HTML to coexist with web apps on the same domain?
 
 The following destination types are covered by WAICT as **passive content**:
 
-* object
 * audio
 * font
 * image
