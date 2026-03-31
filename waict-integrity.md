@@ -81,6 +81,8 @@ However, WAICT does not impact requests made to a WAICT-enforcing domain in othe
 * User-agents which navigate to `foo.com` will enforce WAICT, even when loading sub-resources from `bar.com`.
 * User-agents which navigate to `bar.com` will not enforce WAICT, even when loading sub-resources from `foo.com`.
 
+When an `<iframe>` loads a document from the same origin as the top-level page, the iframe's document and all of its subresources are subject to the same WAICT integrity checks as the top-level page. When an `<iframe>` loads a document from a different origin, the iframe's own subresources are only subject to WAICT if that origin independently advertises WAICT.
+
 ### Storage
 
 User-agents MUST store WAICT state for a top-level origin in order to prevent downgrade attacks. WAICT state is partitioned by top-level origin. For each top-level origin, the user-agent SHOULD store the record:
@@ -478,7 +480,15 @@ User-agents only gain a security benefit from the use of `enforce` mode. User-ag
 
 WAICT V1 forces the use of SHA256 for hashing, unlike SRI which supports a family of hash functions. Using a fixed hash function is necessary to enable user-agents to begin hashing integrity-checked resources before a manifest is available (and so preserve existing website performance). If the security of SHA256 is called into question by future cryptologic advances, a new version of WAICT will need to be defined with a new hash function.
 
-A note on fingerprinting: it is true that a user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` response header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state.
+### Cross-origin iframes
+
+WAICT does not extend integrity enforcement into cross-origin iframes. A same-origin iframe is effectively part of the top-level application — it shares the same origin, can access the parent's DOM, cookies, and storage, and can execute code with the full privileges of that origin. A compromised same-origin iframe is therefore equivalent to a compromise of the top-level page itself, so WAICT must cover it.
+
+A cross-origin iframe, by contrast, is isolated by the browser's same-origin policy. It cannot read or write the embedding page's DOM or storage, and its requests carry its own origin's credentials rather than the embedder's. This allows sites to effectively embed untrusted third-party content.
+
+### Fingerprinting
+
+A user-agent will reveal in its `Integrity-Policy-WAICT-v1-Req` header which manifest URL it has received in an `Integrity-Policy-WAICT-v1` header. This can be used to link a user-agent across individual requests to the same origin. This fingerprinting risk is the same as that of first-party cookies, i.e., any origin which includes a `Set-Cookie` response header can similarly track any cookie-respecting user-agent across individual requests. User-agents MUST partition WAICT state to top-level origins (as they would for cookies). Similarly, when the user-agent is instructed to clear storage for an origin, the user-agent must clear WAICT state.
 
 ## Browser UX Integration
 
