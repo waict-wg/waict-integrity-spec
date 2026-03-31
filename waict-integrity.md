@@ -273,7 +273,7 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, fail with reason `manifest_unavailable`.
 1. If the manifest has failed validation (described above), the user-agent fails with reason `invalid_manifest`.
-1. If the manifest is a tombstone, delete all WAICT state pertaining to this origin (including preloaded state) and return success
+1. If the manifest is a tombstone, return success.
 1. Let `reqURL` be the request's [URL](https://fetch.spec.whatwg.org/#concept-request-url) as it was at the time [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) was invoked, prior to any redirects. Let `reqKey` be the [URL serialization](https://url.spec.whatwg.org/#concept-url-serializer) of `reqURL` with the *exclude fragment* flag set.
 1. Let `b` be the bytes of the response body and `h` be the base64urlnopad-encoded SHA-256 hash of `b`.
 1. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
@@ -351,7 +351,7 @@ When WAICT is active for the current top-level origin, the user-agent MUST execu
 1. If no WAICT state is stored for this top-level origin, return normally (compilation is not blocked by WAICT).
 1. Wait for the manifest to be available. If the manifest cannot be fetched within an implementation-defined timeout, proceed to step 5 with reason `manifest_unavailable`.
 1. If the manifest has failed validation, proceed to step 5 with reason `invalid_manifest`.
-1. If the manifest is a tombstone, delete all WAICT state pertaining to this origin (including preloaded state) and return success
+1. If the manifest is a tombstone, return success.
 1. Let `h` be the base64nopad-encoded SHA-256 hash of `bytes`. Let `wasmHashes` be `manifest["wasm_hashes"]`, or an empty list if not present. If `h` is a member of `wasmHashes`, return normally (compilation is permitted).
 1. The integrity check has failed. Let the failure reason be `wasm_hash_mismatch` unless set otherwise in step 2 or 3. The user-agent MUST report the failure as described in [Reporting](#reporting). If the WAICT mode is `enforce`, the user-agent MUST throw a `WebAssembly.CompileError`. If the WAICT mode is `report`, compilation proceeds normally.
 
