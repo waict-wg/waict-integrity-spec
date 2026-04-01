@@ -289,7 +289,7 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 1. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
 1. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
 1. Let `errorPageHashes` be `manifest["error_page_hashes"]`, or `undefined` if not present.
-1. If the request is a top-level HTML request, and the response status code is 400–599 (inclusive), check whether `h` is a member of `errorPageHashes` (returning `false` if `errorPageHashes` is undefined). If the membership check succeeded, return success. If a membership check was performed and returned false, fail with reason `no_manifest_match`.
+1. If the request destination is `document`, and the response status code is 400–599 (inclusive), check whether `h` is a member of `errorPageHashes` (returning `false` if `errorPageHashes` is undefined). If the membership check succeeded, return success. If a membership check was performed and returned false, fail with reason `no_manifest_match`.
 1. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
 1. Let `resourceDelimiter = manifest["resource_delimiter"]`, or `undefined` if not present.
 1. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
