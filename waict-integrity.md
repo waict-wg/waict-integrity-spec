@@ -159,6 +159,7 @@ The integrity manifest is a JSON object with the following structure. All fields
 
 * `hashes` — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64urlnopad-encoded.
 * `wasm_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad) of permitted WebAssembly module bytes. The sorted order enables efficient membership testing by user-agents. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
+* `fallback_hashes` (optional) - a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad) of permitted content only for document navigation. The sorted order enables efficient membership testing by user-agents.
 * `wildcard_hashes` (optional) — a lexicographically sorted list of unique SHA-256 hashes (base64urlnopad-encoded). The sorted order enables efficient membership testing by user-agents.
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
 * `emergency_opt_out` (optional) — a boolean used when the origin needs to disable WAICT immediately. Default is `false`
@@ -180,6 +181,10 @@ An example is given below:
   "wasm_hashes": [
     "Aq3rP9FkR8vLHnUGT5OgP7xmNyvDh2YcfJLmzgSEz7o=",
     "kJ2E9N8C3vR5xP7yQwL4mFbA6dH0jT2uK9sG1nO3iVc="
+  ],
+  "fallback_hashes": [
+    "aB3xW9vKpL2mRnQy7dFtUeHsOiGjCzNw4kYuMlPqVrS=",
+    "tP8cE1hXwD5nJbAf6gQsIyKoZvLmRuN2eCdFpWxBqM0="
   ],
   "wildcard_hashes": [
     "mVuswfW4XCBOWbx+QiKkPPQy+gTfr+i1sVADexgyN+8=",
@@ -283,6 +288,8 @@ The response body is [fully read](https://fetch.spec.whatwg.org/#body-fully-read
 1. Let `b` be the bytes of the response body and `h` be the base64urlnopad-encoded SHA-256 hash of `b`.
 1. Let `pathHash` be the hash value from `manifest["hashes"]` whose key's canonical form (as defined in [Validating Manifests](#validating-manifests)) equals `reqKey`, or `undefined` if no such entry exists.
 1. If the destination type is listed under **passive content** and `pathHash` is undefined, return success.
+1. Let `fallbackHashes` be `manifest["fallback_hashes"]`, or undefined if not present.
+1. If `fallbackHashes` is defined and non-empty, and the request destination is `document`, check whether `h` is a member of `fallbackHashes`. If it is, return success.
 1. Let `wildcardHashes = manifest["wildcard_hashes"]`, or `undefined` if not present.
 1. If `pathHash` is defined, compare `h` to `pathHash`. If they match, return success. Otherwise, fail with reason `no_manifest_match`. A resource whose URL appears in `hashes` MUST match via its `pathHash`; the wildcard check is never used as a fallback.
 1. If `wildcardHashes` is defined and non-empty and `resource_delimiter` is defined and non-empty:
