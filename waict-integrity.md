@@ -92,15 +92,11 @@ User-agents MUST store WAICT state for a top-level origin in order to prevent do
 
 The user-agent MUST clear the state when it reaches its effective expiry time and MAY clear it sooner. There may be situations in which user-agents are unable to store the information described above. For example, user-agents may not have access to long-term state (e.g. they are running in a private browsing mode). Such user-agents SHOULD store the record for as long as they are able.
 
-### Cache and Service Worker Pruning
+### Validating Existing Service Worker and Cache
 
-When a user-agent first observes a valid `Integrity-Policy-WAICT-v1` header for an origin (i.e., no prior WAICT state exists for that origin), or when it fetches a new manifest for an origin that differs from the previously stored manifest URL, the user-agent MUST:
+When a user-agent first observes a valid `Integrity-Policy-WAICT-v1` header for an origin (i.e., no prior WAICT state exists for that origin), or when it fetches a new manifest for an origin that differs from the previously stored manifest URL, the user-agent MUST trigger an update check for any Service Workers registered for the top-level origin. The user-agent MUST prevent any existing Service Worker from intercepting covered fetches until the update check has completed. If the updated Service Worker script passes the WAICT integrity check against the current manifest, the update MAY proceed to install and activate normally. If the integrity check fails, the update MUST be rejected following the failure handling described in [Handling Failures](#handling-failures), and the existing Service Worker MUST be unregistered.
 
-1. Clear the HTTP cache for all resources whose origin matches the top-level origin, to prevent stale cached responses from bypassing integrity checks.
-2. Clear any caches associated with Service Workers registered for the top-level origin.
-3. Trigger an update check for any Service Workers registered for the top-level origin. The user-agent MUST prevent any existing Service Worker from intercepting covered fetches until the update check has completed. If the updated Service Worker script passes the WAICT integrity check against the current manifest, the update MAY proceed to install and activate normally. If the integrity check fails, the update MUST be rejected following the failure handling described in [Handling Failures](#handling-failures), and the existing Service Worker MUST be unregistered.
-
-Steps 2 and 3 address two distinct threat scenarios. First, they prevent a Service Worker that was registered before WAICT was enabled for the origin from continuing to operate outside of WAICT's integrity guarantees, as such a Service Worker was never subject to an integrity check. Second, they prevent a previously valid Service Worker from becoming desynchronised from its manifest entry following a manifest rotation, for example if a site deploys a new version of its application with an updated manifest but the old Service Worker remains active.
+WAICT integrity checks apply to all covered responses regardless of whether they were served from the network or the HTTP cache. User-agents MUST NOT exempt cached responses from integrity checking.
 
 ### Upgrades and Downgrades
 
