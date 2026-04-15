@@ -2,7 +2,7 @@
 
 This file contains a list of breaking changes between versions of the WAICT integrity draft.
 
-## draft-waict-integrity-v2 (2026-04-14)
+## draft-waict-integrity-v2 (2026-04-15)
 
 * Defined manifest URL response format (`application/waict-integrity-manifest`), splitting out transparency proof from manifest [#17](https://github.com/waict-wg/waict-integrity-spec/pull/17)
 * Added requirement that manifest URLs are immutable [#13](https://github.com/waict-wg/waict-integrity-spec/pull/13)
