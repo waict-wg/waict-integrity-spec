@@ -186,19 +186,17 @@ Servers SHOULD use a suitable HTTP compression scheme as negotiated by the user-
 The integrity manifest is a JSON object with the following structure. All fields are mandatory unless marked optional:
 
 * `url_hashes` (optional) — a dictionary mapping URLs to hashes. All hashes MUST use the SHA-256 algorithm and be base64urlnopad-encoded.
-* `wasm_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted WebAssembly module bytes. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
-* `fallback_hashes` (optional) - a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted content only for document navigation.
-* `wildcard_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad).
-* `inline_js_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted inline `<script>` element content and `javascript:` URI script sources. The hash is computed over the same byte sequence that CSP3's [hash-source](https://www.w3.org/TR/CSP3/#grammardef-hash-source) check would hash. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
-* `event_handler_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted inline event-handler attribute values (e.g. `onclick`, `onload`, `onerror`), computed over the same byte sequence as `inline_js_hashes`. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
-* `eval_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted strings compiled as code through `eval`, `new Function`, and the string forms of `setTimeout` / `setInterval`. See [Inline Scripts and Dynamic Code](#inline-scripts-and-dynamic-code).
-* `inline_css_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted inline `<style>` element content, computed identically to `inline_js_hashes` but for styles. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
-* `style_attr_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted inline `style` attribute values. Kept separate from `inline_css_hashes` so that a hash authorized for a `style` attribute cannot also authorize a full inline `<style>` element. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
-* `inline_url_hashes` (optional) — a sorted list of unique SHA-256 hashes (base64urlnopad) of permitted bytes addressed by `data:` or `blob:` URLs used as the source for active-class fetches. See [`data:` and `blob:` URLs as Active Content](#data-and-blob-urls-as-active-content).
+* `wasm_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted WebAssembly module bytes. See [Changes to WebAssembly Processing](#changes-to-webassembly-processing).
+* `fallback_hashes` (optional) - a list of SHA-256 hashes (base64urlnopad) of permitted content only for document navigation.
+* `wildcard_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad).
+* `inline_js_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted inline `<script>` element content and `javascript:` URI script sources. The hash is computed over the same byte sequence that CSP3's [hash-source](https://www.w3.org/TR/CSP3/#grammardef-hash-source) check would hash. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
+* `event_handler_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted inline event-handler attribute values (e.g. `onclick`, `onload`, `onerror`), computed over the same byte sequence as `inline_js_hashes`. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
+* `eval_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted strings compiled as code through `eval`, `new Function`, and the string forms of `setTimeout` / `setInterval`. See [Inline Scripts and Dynamic Code](#inline-scripts-and-dynamic-code).
+* `inline_css_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted inline `<style>` element content, computed identically to `inline_js_hashes` but for styles. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
+* `style_attr_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted inline `style` attribute values. Kept separate from `inline_css_hashes` so that a hash authorized for a `style` attribute cannot also authorize a full inline `<style>` element. See [Inline Scripts, Styles, and Dynamic Code](#inline-scripts-styles-and-dynamic-code).
+* `inline_url_hashes` (optional) — a list of SHA-256 hashes (base64urlnopad) of permitted bytes addressed by `data:` or `blob:` URLs used as the source for active-class fetches. See [`data:` and `blob:` URLs as Active Content](#data-and-blob-urls-as-active-content).
 * `resource_delimiter` (optional) — a string used for splitting subresource contents.
 * `emergency_opt_out` (optional) — a boolean used when the origin needs to disable WAICT immediately. Default is `false`
-
-Each hash list above (`wasm_hashes`, `fallback_hashes`, `wildcard_hashes`, `inline_js_hashes`, `event_handler_hashes`, `eval_hashes`, `inline_css_hashes`, `style_attr_hashes`, and `inline_url_hashes`) MUST be sorted in ascending lexicographic order. The sorted order enables efficient membership testing by user-agents.
 
 When a manifest has `emergency_opt_out = true`, we say it is a **tombstone**, since it is used to indicate that the origin has unenrolled from WAICT. No integrity checking happens when a tombstone manifest is served.
 
