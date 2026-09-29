@@ -91,28 +91,36 @@ An example header is given below:
 Integrity-Policy-WAICT-v1: max-age=90, mode-document=enforce, mode-frame=enforce, mode-script=enforce, mode-object=enforce, mode-worker=enforce, mode-style=warn, mode-image=report, mode-font=report, mode-media=report, mode-wasm=warn, mode-inline-js=report, mode-inline-css=report, preload=?0, report-to=(foo-reports), manifest="/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA"
 ```
 
-Websites using WAICT MUST set a WAICT response header on top-level navigation responses. Websites MAY additionally set the header on subresource responses as a defence in depth measure against user-agents with stale manifests (see [Manifest Override on Subresource Responses](#manifest-override-on-subresource-responses)).
+Websites using WAICT MUST set a WAICT response header on navigation responses, top-level or framed. Websites MAY additionally set the header on subresource responses as a defence in depth measure against user-agents with stale manifests (see [Manifest Override on Subresource Responses](#manifest-override-on-subresource-responses)).
 
 ## User-Agent Processing of Response Header
 
 ### Scope
 
-WAICT state is scoped to the top-level origin and applies to requests made within the context of that origin. It does not extend to requests made by other top-level origins and so is compatible with the partitioning of state by top-level origin.
+WAICT state is partitioned by the top-level origin and applies to requests made within the context of that origin. It does not extend to requests made by other top-level origins and so is compatible with the partitioning of state by top-level origin.
 
-When processing a response whose origin is the same as the [top-level navigation initiator origin](https://fetch.spec.whatwg.org/#ref-for-request-top-level-navigation-initiator-origin), user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and MUST store the WAICT configuration for this origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
+When processing a navigation response, top-level or framed, user-agents MUST check for valid `Integrity-Policy-WAICT-v1` response headers and MUST store the WAICT configuration for the response's origin for at most `max-age` seconds from the present. This information is partitioned to the top-level origin.
 
-However, WAICT does not impact requests made to a WAICT-enforcing domain in other top-level contexts if those top-level contexts do not advertise WAICT themselves. User-agents MUST ignore `Integrity-Policy-WAICT-v1` headers set on responses whose origin does not match their current top-level navigation initiator origin. An example:
+However, WAICT does not impact subresource requests made to a WAICT-enforcing domain in other top-level contexts if those top-level contexts do not advertise WAICT themselves. User-agents MUST ignore `Integrity-Policy-WAICT-v1` headers set on subresource responses whose origin does not match that of the requesting document. An example:
 
 * `foo.com` and `bar.com` both embed resources located on each other's domains
 * `foo.com` uses WAICT and sets an enforcement header. `bar.com` does not use WAICT.
 * User-agents which navigate to `foo.com` will enforce WAICT, even when loading sub-resources from `bar.com`.
 * User-agents which navigate to `bar.com` will not enforce WAICT, even when loading sub-resources from `foo.com`.
 
-When an `<iframe>` loads a document from the same origin as the top-level page, the iframe's document and all of its subresources are subject to the same WAICT integrity checks as the top-level page. When an `<iframe>` loads a document from a different origin, the iframe's own subresources are only subject to WAICT if that origin independently advertises WAICT.
+A framed document is subject to the WAICT state stored for the origin of its URL, not to its embedder's; nothing is inherited across an `http(s):` navigation, matching HTML's [policy container](https://html.spec.whatwg.org/multipage/browsers.html#policy-container) rules. When an `<iframe>` loads a document from the same origin as its embedder, it is therefore subject to the same WAICT integrity checks as the embedder. When an `<iframe>` loads a document from a different origin, same-site or not, it is only subject to WAICT if that origin independently advertises WAICT. `about:blank`, `about:srcdoc`, `blob:` and `data:` frames inherit the creator's policy container and with it the creator's WAICT state; whether they may load at all is decided by `mode-frame`.
+
+#### Agent Cluster Isolation
+
+A document whose origin has stored WAICT state MUST be placed in an [origin-keyed](https://html.spec.whatwg.org/multipage/browsers.html#origin-keyed-agent-clusters) agent cluster, so that it shares an agent cluster only with same-origin documents; same-site is not sufficient. This holds in every mode.
+
+#### Frame Sandboxing
+
+When a document whose origin has stored WAICT state with `mode-frame` in `enforce` mode embeds a frame that is not same-origin with it, the user-agent MUST add the following to the framed document's [active sandboxing flag set](https://html.spec.whatwg.org/multipage/browsers.html#active-sandboxing-flag-set): the sandboxed navigation browsing context flag, the sandboxed top-level navigation without user activation browsing context flag, the sandboxed top-level navigation with user activation browsing context flag, the sandboxed custom protocols navigation browsing context flag, and the sandbox propagates to auxiliary browsing contexts flag. This matches a `sandbox` attribute lacking `allow-top-navigation`, `allow-top-navigation-by-user-activation`, `allow-top-navigation-to-custom-protocols` and `allow-popups-to-escape-sandbox`. The embedder MAY restrict the frame further with the `sandbox` attribute but cannot grant these capabilities back.
 
 ### Validating Existing Service Worker and Cache
 
-When a user-agent first observes a valid `Integrity-Policy-WAICT-v1` header for an origin (i.e., no prior WAICT state exists for that origin), or when it fetches a new manifest for an origin that differs from the previously stored manifest URL, the user-agent MUST trigger an update check for any Service Workers registered for the top-level origin. The user-agent MUST prevent any existing Service Worker from intercepting covered fetches until the update check has completed. If the updated Service Worker script passes the WAICT integrity check against the current manifest, the update MAY proceed to install and activate normally. If the integrity check fails, the update MUST follow the failure handling described in [Handling Failures](#handling-failures) for the appropriate mode.
+When a user-agent first observes a valid `Integrity-Policy-WAICT-v1` header for an origin (i.e., no prior WAICT state exists for that origin), or when it fetches a new manifest for an origin that differs from the previously stored manifest URL, the user-agent MUST trigger an update check for any Service Workers registered for that origin. The user-agent MUST prevent any existing Service Worker from intercepting covered fetches until the update check has completed. If the updated Service Worker script passes the WAICT integrity check against the current manifest, the update MAY proceed to install and activate normally. If the integrity check fails, the update MUST follow the failure handling described in [Handling Failures](#handling-failures) for the appropriate mode.
 
 WAICT integrity checks apply to all covered responses regardless of whether they were served from the network or the HTTP cache. User-agents MUST NOT exempt cached responses from integrity checking. If a user-agent cannot apply checks to a cached resource because it no longer retains the necessary information (e.g. the user-agent has transformed the local representation resource and discarded the original representation) it should treat the resource as missing from the cache.
 
@@ -120,7 +128,7 @@ WAICT integrity checks apply to all covered responses regardless of whether they
 
 Origins may change their WAICT header over time. For example, an origin may evaluate the `mode-script` category in `report` mode and later switch to `enforce`. Alternatively, a site may be enforcing WAICT for one category and wish to add another, change the scope of covered resources, or disable a category entirely. However, user-agents MUST enforce certain rules to prevent downgrade attacks - where a site alters its WAICT signalling in order to enable attacks. Each category is ratcheted independently: upgrading one category is immediate, but downgrading or removing it requires waiting out the `max-age` of the header in which that category was last seen.
 
-To prevent downgrade attacks, user-agents MUST store WAICT state for each top-level origin that has advertised WAICT, partitioned by top-level origin. The stored record is composed of:
+To prevent downgrade attacks, user-agents MUST store WAICT state for each origin that has advertised WAICT, partitioned by top-level origin. The stored record is composed of:
 
 * the list of reporting endpoints,
 * the manifest URL, and
@@ -171,7 +179,7 @@ WAICT manifests provide a public commitment to the web application(s) being serv
 When a fetch for a resource is governed by a category in `enforce` mode, the fetch will be unable to complete successfully until a manifest is available. When the governing category is in `report` mode, the fetch will be unable to complete successfully until a manifest is available or an implementation-defined timeout occurs. In `warn` mode, the fetch should not be blocked on manifest availability.
 User-agents SHOULD fetch WAICT manifests with high priority as soon as they become aware of them.
 
-The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per top-level origin at a time.
+The manifest located at a given URL is expected to be immutable and SHOULD have its response set [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) to include `immutable` and a long `max-age`. Sites can notify user-agents that an updated manifest is available by updating the `manifest` field of the WAICT header. User-agents only need to store the contents of one manifest per origin at a time.
 
 The response content type of a successful GET to a URL referenced in the `manifest` field in `Integrity-Policy-WAICT-v1` MUST be `application/waict-integrity-manifest` (TODO: reserve this MIME type). Responses with this type contain a _manifest_ JSON blob whose structure is defined in the next section, and a _transparency proof_ line. More precisely, the response body is of the form:
 ```
@@ -262,7 +270,7 @@ Manifests MUST have the following properties:
 * If the manifest was linked to by a WAICT integrity policy header with nonzero `max-age` that is still in effect, then the transparency proof is successfully parsed and checked using the algorithm in TODO (Reference Transparency Specifications)
 * If the manifest is non-tombstone:
   * Values in `url_hashes`, `wasm_hashes`, `fallback_hashes`, `wildcard_hashes`, `inline_js_hashes`, `event_handler_hashes`, `inline_css_hashes`, `style_attr_hashes`, `inline_url_hashes`, and `eval_hashes` are valid base64urlnopad ([RFC 4648 Section 5](https://www.rfc-editor.org/rfc/rfc4648#section-5)) and decode to exactly 32 bytes.
-  * Each key `s` of `url_hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the top-level origin (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
+  * Each key `s` of `url_hashes` is a _canonical_ URL, defined as follows. `s` is parsed with the [API URL Parser](https://url.spec.whatwg.org/#api-url-parser) using the origin that advertised the manifest (serialized as `scheme://host:port/`) as base URL (note, this permits external URLs; the base is only applied when the provided URL is relative), and any [fragment](https://url.spec.whatwg.org/#concept-url-fragment) is removed. The result is then [URL-serialized](https://url.spec.whatwg.org/#concept-url-serializer) with the *exclude fragment* flag set. `s` is canonical when this serialization equals `s`.
 
 The first property above allows origins to keep WAICT transparency disabled by always setting the policy's `max-age` to 0, and serving an empty string (or any other newline-free string) as the transparency proof. Note the non-tombstone conditional means that manifests with `emergency_opt_out` set MUST be treated as tombstones even when the entries in all the fields are invalid.
 
@@ -299,7 +307,7 @@ Before [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) is invoked, the u
 
 Categories are partitioned into **active content** (a covered fetch whose URL is missing from the manifest fails) and **passive content** (a covered fetch whose URL is missing from the manifest skips integrity checking and proceeds). The class of a category is fixed by this specification; operators control only the strictness of the corresponding `mode-*` key.
 
-A request is **covered** by WAICT if its destination is listed for some category in that table and the stored WAICT state for the top-level origin contains a record for that category. Otherwise the fetch proceeds without WAICT processing. Covered fetches are subject to the integrity checks described below, governed by the mode of the mapped category.
+A request is **covered** by WAICT if its destination is listed for some category in that table and the WAICT state that applies to the document or worker making the request (the request's [client](https://fetch.spec.whatwg.org/#concept-request-client)) contains a record for that category. For a navigation request, the state that applies is that of the response's origin (see [Scope](#scope)). Otherwise the fetch proceeds without WAICT processing. Covered fetches are subject to the integrity checks described below, governed by the mode of the mapped category.
 
 ## Request Setup
 
@@ -307,7 +315,7 @@ The [`fetch`](https://fetch.spec.whatwg.org/#concept-fetch) algorithm sets up th
 
 For a request to a covered destination type, WAICT adds the following steps during this request setup phase.
 
-The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for this top-level origin. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
+The user-agent SHOULD [append](https://fetch.spec.whatwg.org/#concept-header-list-append) (`Integrity-Policy-WAICT-v1-Req`, *manifest-url*) to the request's [header list](https://fetch.spec.whatwg.org/#concept-request-header-list), where *manifest-url* is the URL of the manifest currently in use for the requesting document or worker. This allows the server to identify which version of its resources the user-agent expects and respond appropriately. For example:
 
 ```
 Integrity-Policy-WAICT-v1-Req: "/.well-known/waict/manifests/baz_manifest_5X_MjpjR0bpBpP3dEF6-hA"
@@ -344,7 +352,7 @@ If the integrity check succeeds, `main fetch` proceeds to [`fetch response hando
 
 ### Manifest Override on Subresource Responses
 
-When a user-agent receives a response to a covered subresource request, the response MAY include an `Integrity-Policy-WAICT-v1` header. If this header is present and contains a `manifest` URL that differs from the manifest URL currently stored for the top-level origin, the user-agent MUST fetch the manifest at the new URL and use it when performing the integrity check for that subresource. The user-agent MUST also update its stored WAICT state for the top-level origin following the algorithm in [Upgrades and Downgrades](#upgrades-and-downgrades).
+When a user-agent receives a response to a covered subresource request, the response MAY include an `Integrity-Policy-WAICT-v1` header. If this header is present and contains a `manifest` URL that differs from the manifest URL currently stored for the requesting document or worker, the user-agent MUST fetch the manifest at the new URL and use it when performing the integrity check for that subresource. The user-agent MUST also update its stored WAICT state for that origin following the algorithm in [Upgrades and Downgrades](#upgrades-and-downgrades).
 
 This mechanism provides a defence in depth against stale manifests. If a user-agent has cached a manifest from a previous page load, a server can correct this by serving an updated `Integrity-Policy-WAICT-v1` header on any subresource response. The user-agent will then fetch the updated manifest and use it for the integrity check rather than relying on the stale manifest, which may not contain entries for newly deployed resources.
 
@@ -403,9 +411,9 @@ A `WebAssembly.Module` is also a [serializable object](https://webassembly.githu
 
 WebAssembly defines the [`HostEnsureCanCompileWasmBytes()`](https://webassembly.github.io/content-security-policy/js-api/#host-ensure-can-compile-wasm-bytes) abstract operation, which allows the host environment to block compilation of WebAssembly source bytes. CSP3 [implements this hook](https://www.w3.org/TR/CSP3/#can-compile-wasm-bytes) to enforce its `script-src` directive. WAICT adds an additional check within this hook.
 
-When WAICT is active for the current top-level origin, the user-agent MUST execute the following steps within `HostEnsureCanCompileWasmBytes(bytes)`:
+When WAICT is active for the current realm, the user-agent MUST execute the following steps within `HostEnsureCanCompileWasmBytes(bytes)`:
 
-1. If no WAICT state is stored for this top-level origin, or if no record exists for the `mode-wasm` category, return normally (compilation is not blocked by WAICT).
+1. If no WAICT state applies to the current realm, or if no record exists for the `mode-wasm` category, return normally (compilation is not blocked by WAICT).
 1. Resolve the manifest as in steps 2–4 of [Integrity Check](#integrity-check): wait for the manifest with an implementation-defined timeout (`manifest_unavailable` on timeout), reject invalid manifests (`invalid_manifest`), and treat tombstones as success.
 1. Let `h` be the base64urlnopad-encoded SHA-256 hash of `bytes`. If `manifest["wasm_hashes"]` is present and `h` is a member of it, return normally (compilation is permitted). Otherwise, the failure reason is `wasm_hash_mismatch` (or the manifest reason from the previous step).
 1. Handle the failure under the mode of `mode-wasm` as described in [Handling Failures](#handling-failures). In `warn` mode the user-agent MAY perform this hash check asynchronously without blocking compilation, surfacing the warning UX once the failure is observed.
@@ -522,7 +530,7 @@ Compliant user-agents SHALL NOT display error messages to end-users who have not
 
 In `warn` mode, the user-agent MUST permit the operation, and any integrity check MAY proceed asynchronously. The user-agent SHOULD NOT delay [`fetch response handover`](https://fetch.spec.whatwg.org/#fetch-finale), WebAssembly compilation, or inline execution while waiting for a `warn`-mode check to complete.
 
-If a `warn`-mode check ultimately fails, the user-agent MUST surface a user-visible indication that the top-level origin failed a WAICT integrity check. The form of this indication is implementation-defined (for example, a security indicator change in the address bar), but it MUST be distinguishable from the indication shown when no WAICT failure has occurred. The user-agent SHOULD NOT block the user from continuing to interact with the page.
+If a `warn`-mode check ultimately fails, the user-agent MUST surface a user-visible indication that a WAICT integrity check failed. The form of this indication is implementation-defined (for example, a security indicator change in the address bar), but it MUST be distinguishable from the indication shown when no WAICT failure has occurred. The user-agent SHOULD NOT block the user from continuing to interact with the page.
 
 ## Enforce Mode
 
